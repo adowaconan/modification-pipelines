@@ -32,13 +32,9 @@ from sklearn.preprocessing import label_binarize,scale
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import label_binarize,StandardScaler
-from obspy.signal.filter import bandpass
-#eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
+
+eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
 EDFfiles, Annotationfiles = eegPinelineDesign.split_type_of_files()
-
-
-
-
 from eegPinelineDesign import CenterAtPeakOfWindow,Threshold_test,spindle_overlapping_test,used_windows_check,cut_segments
 
 
@@ -64,8 +60,9 @@ for num, EDFfileName in enumerate(EDFfiles):
                 spindles.append(row[1][0])# time of marker
         print(spindles)
         print('finish spindle annotation')
-        
+
         channelList=['F3','F4','C3','C4','O1','O2']
+        plt.figure(figsize=(20,20))
         used_time_windows=[]
         time_spindle[fileName]={};time_nonspindle[fileName]={}
         spindle[fileName]={};nonspindle[fileName]={}
@@ -78,31 +75,31 @@ for num, EDFfileName in enumerate(EDFfiles):
                 if Threshold_test(items,raw_alpha,raw_spindle,raw_muscle,channelID):
                     try:
                         centered_marker=CenterAtPeakOfWindow(items,2,raw_spindle,channelID)
-                        Segment,_ = cut_segments(raw_spindle,centered_marker,channelID)
+                        Segment,TT = cut_segments(raw_spindle,centered_marker,channelID)
                         spindle[fileName][names].append(Segment)
                         print(fileName,names,centered_marker,'spindle')
-                        for max_iteration in range(10e5):
+                        #plt.plot(TT,Segment)
+                        #plt.clf()
+                        for max_iteration in range(1000):
                             startPoint=6;endPoint=raw.last_samp/1000-6
                             start,stop=raw.time_as_index([startPoint,endPoint])
                             S,T = raw[channelID,start:stop]
                             timePoint=np.random.choice(T,1)
-                            if (Threshold_test(timePoint,raw,channelID)) and (spindle_overlapping_test(spindles,timePoint,1.5)) and (used_windows_check(timePoint,used_time_windows,1.5)):
+                            if (Threshold_test(timePoint,raw_alpha,raw_spindle,raw_muscle,channelID)) and (spindle_overlapping_test(spindles,timePoint,1.5)) and (used_windows_check(timePoint,used_time_windows,1.5)):
                                 Segment,_=cut_segments(raw_spindle,timePoint,channelID)
                                 nonspindle[fileName][names].append(Segment)
                                 used_time_windows.append([timePoint-1.5,timePoint+1.5])
-                                print('non spindle')
+                                print(timePoint,'non spindle')
                                 break
                             else:
+                                #print('no non spindle left')
                                 pass
                     except:
                         print('error')
                 else:
                     pass
-        
+
 result={'spindle':spindle,'non spindle':nonspindle,'spindle time':time_spindle,'nonspindle time':time_nonspindle}
 import pickle
 with open('training data.p','wb') as handle:
     pickle.dump(result,handle)
-
-
-
