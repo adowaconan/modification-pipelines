@@ -33,7 +33,10 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import label_binarize,StandardScaler
 
-eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
+try:
+    eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
+except:
+    pass
 EDFfiles, Annotationfiles = eegPinelineDesign.split_type_of_files()
 from eegPinelineDesign import CenterAtPeakOfWindow,Threshold_test,spindle_overlapping_test,used_windows_check,cut_segments
 
@@ -46,7 +49,7 @@ for num, EDFfileName in enumerate(EDFfiles):
     else:
         file_to_read,fileName=eegPinelineDesign.pick_sample_file(EDFfiles,n=num)
         channelList = ['F3','F4','C3','C4','O1','O2','ROC','LOC']
-        raw = eegPinelineDesign.load_data(file_to_read,channelList,None, 100)#low pass data
+        #raw = eegPinelineDesign.load_data(file_to_read,channelList,None, 100)#low pass data
         raw_alpha=eegPinelineDesign.load_data(file_to_read,channelList,8, 12)#alpha pass
         raw_spindle=eegPinelineDesign.load_data(file_to_read,channelList,11, 16)#spindle pass
         raw_muscle=eegPinelineDesign.load_data(file_to_read,channelList,30, 40)#
@@ -58,11 +61,11 @@ for num, EDFfileName in enumerate(EDFfiles):
             currentEvent = row[1][-1]
             if labelFind.search(currentEvent):
                 spindles.append(row[1][0])# time of marker
-        print(spindles)
+        #print(spindles)
         print('finish spindle annotation')
 
         channelList=['F3','F4','C3','C4','O1','O2']
-        plt.figure(figsize=(20,20))
+        #plt.figure(figsize=(20,20))
         used_time_windows=[]
         time_spindle[fileName]={};time_nonspindle[fileName]={}
         spindle[fileName]={};nonspindle[fileName]={}
@@ -77,19 +80,19 @@ for num, EDFfileName in enumerate(EDFfiles):
                         centered_marker=CenterAtPeakOfWindow(items,2,raw_spindle,channelID)
                         Segment,TT = cut_segments(raw_spindle,centered_marker,channelID)
                         spindle[fileName][names].append(Segment)
-                        print(fileName,names,centered_marker,'spindle')
+                        #print(fileName,names,centered_marker,'spindle')
                         #plt.plot(TT,Segment)
                         #plt.clf()
-                        for max_iteration in range(1000):
-                            startPoint=6;endPoint=raw.last_samp/1000-6
-                            start,stop=raw.time_as_index([startPoint,endPoint])
-                            S,T = raw[channelID,start:stop]
+                        for max_iteration in range(int(round(raw_spindle.last_samp/1000))):
+                            startPoint=6;endPoint=raw_spindle.last_samp/1000-6
+                            start,stop=raw_spindle.time_as_index([startPoint,endPoint])
+                            S,T = raw_spindle[channelID,start:stop]
                             timePoint=np.random.choice(T,1)
                             if (Threshold_test(timePoint,raw_alpha,raw_spindle,raw_muscle,channelID)) and (spindle_overlapping_test(spindles,timePoint,1.5)) and (used_windows_check(timePoint,used_time_windows,1.5)):
                                 Segment,_=cut_segments(raw_spindle,timePoint,channelID)
                                 nonspindle[fileName][names].append(Segment)
                                 used_time_windows.append([timePoint-1.5,timePoint+1.5])
-                                print(timePoint,'non spindle')
+                                #print(timePoint,'non spindle')
                                 break
                             else:
                                 #print('no non spindle left')

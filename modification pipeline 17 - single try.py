@@ -35,17 +35,20 @@ from sklearn.preprocessing import label_binarize,scale
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import label_binarize,StandardScaler
-eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
+try:
+    eegPinelineDesign.change_file_directory('C:/Users/ning/Downloads/training set')
+except:
+    pass
 EDFfiles, Annotationfiles = eegPinelineDesign.split_type_of_files()
 
 from eegPinelineDesign import CenterAtPeakOfWindow,Threshold_test,spindle_overlapping_test,used_windows_check,cut_segments
 
 
-num=int(input())
+num=int(input("please enter 1 or 2"))
 spindle={};nonspindle={};time_spindle={};time_nonspindle={}
 file_to_read,fileName=eegPinelineDesign.pick_sample_file(EDFfiles,n=num)
 channelList = ['F3','F4','C3','C4','O1','O2','ROC','LOC']
-raw = eegPinelineDesign.load_data(file_to_read,channelList,None, 100)#low pass data
+#raw = eegPinelineDesign.load_data(file_to_read,channelList,None, 100)#low pass data
 raw_alpha=eegPinelineDesign.load_data(file_to_read,channelList,8, 12)#alpha pass
 raw_spindle=eegPinelineDesign.load_data(file_to_read,channelList,11, 16)#spindle pass
 raw_muscle=eegPinelineDesign.load_data(file_to_read,channelList,30, 40)#
@@ -79,9 +82,9 @@ for channelID, names in enumerate(channelList):
                 #plt.plot(TT,Segment)
                 #plt.clf()
                 for max_iteration in range(1000):
-                    startPoint=6;endPoint=raw.last_samp/1000-6
-                    start,stop=raw.time_as_index([startPoint,endPoint])
-                    S,T = raw[channelID,start:stop]
+                    startPoint=6;endPoint=raw_spindle.last_samp/1000-6
+                    start,stop=raw_spindle.time_as_index([startPoint,endPoint])
+                    S,T = raw_spindle[channelID,start:stop]
                     timePoint=np.random.choice(T,1)
                     if (Threshold_test(timePoint,raw_alpha,raw_spindle,raw_muscle,channelID)) and (spindle_overlapping_test(spindles,timePoint,1.5)) and (used_windows_check(timePoint,used_time_windows,1.5)):
                         Segment,_=cut_segments(raw_spindle,timePoint,channelID)
@@ -102,3 +105,80 @@ result={'spindle':spindle,'non spindle':nonspindle,'spindle time':time_spindle,'
 import pickle
 with open('single subject.p','wb') as handle:
     pickle.dump(result,handle)
+
+
+fileName=list(result['spindle'].keys())[0]
+channelList=['F3','F4','C3','C4','O1','O2']
+X = [];Y=[]
+for names in channelList:
+    for item in result['spindle'][fileName][names]:
+        if item.shape[1] == 3000:
+
+            X.append(item[0,:])
+            Y.append(1)
+    for item in result['non spindle'][fileName][names]:
+        if item.shape[1] == 3000:
+            X.append(item[0,:])
+            Y.append(0)
+
+X=np.array(X);Y=np.array(Y)
+
+idx=np.arange(X.shape[0])
+GG=np.random.choice(tuple(idx),len(idx),replace=False)
+def shuffle(x):
+    return sorted(x, key=lambda k: random.random())
+GG = shuffle(shuffle(shuffle(shuffle(GG))))
+XX=[];YY=[]
+for idxx in GG:
+    XX.append(X[idxx])
+    YY.append(Y[idxx])
+
+from sklearn.preprocessing import normalize
+normal_X = normalize(XX)
+X_train, X_test, y_train, y_test = train_test_split(normal_X, YY, test_size=0.20)
+
+#print(y_train)
+
+clf =LogisticRegression(penalty='l2',C=.1,tol=10e-9,fit_intercept=True,solver='liblinear',
+                                             max_iter=10e7,multi_class='ovr',n_jobs=-1)
+
+
+
+clf.fit(X_train,y_train)
+print('logistic,1 fold, 80/20 train/test slipt')
+print(classification_report(clf.predict(X_test),y_test))
+print('within training data set',clf.score(X_train,y_train))
+
+num=int(input("please enter 1 or 2"))
+file_to_read,fileName=eegPinelineDesign.pick_sample_file(EDFfiles,n=num)
+channelList = ['F3','F4','C3','C4','O1','O2','ROC','LOC']
+raw_filter = eegPinelineDesign.load_data(file_to_read,channelList,11, 16)#spindle pass
+raw_alpha=eegPinelineDesign.load_data(file_to_read,channelList,8, 12)#alpha pass
+raw_spindle=eegPinelineDesign.load_data(file_to_read,channelList,11, 16)#spindle pass
+raw_muscle=eegPinelineDesign.load_data(file_to_read,channelList,30, 40)#
+channelList = ['F3','F4','C3','C4','O1','O2']
+raw_filter.pick_channels(channelList)
+
+time_label={};resolution = 0.02
+for names in channelList:
+    time_label[names]=[]
+    
+
+centerPoint = 0+5;cnt = 0
+while raw_filter.last_samp/1000 - centerPoint > 1.5:
+    if (cnt % 500) == 0:
+        print(centerPoint)
+    for ii,names in enumerate(channelList):
+    
+        if Threshold_test(centerPoint,raw_alpha,raw_spindle,raw_muscle,ii):
+            tempSegment,timeSpan=cut_segments(raw_filter,centerPoint,ii,windowsize = 1.5)
+            predictedLabel = clf.predict(tempSegment[0,:3000])
+            time_label[names].append([centerPoint,predictedLabel])
+        else:
+            time_label[names].append([centerPoint,0])
+
+    centerPoint += resolution;cnt += 1
+print('done')
+
+with open('single subject prediction.p','wb') as handle:
+    pickle.dump(time_label,handle)
