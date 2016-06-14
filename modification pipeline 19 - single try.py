@@ -46,6 +46,7 @@ with open('training data.p','rb') as handle:
     result=pickle.load(handle)
     
 channelList=['F3','F4','C3','C4','O1','O2']
+
 X = [];Y=[]
 for num, EDFfileName in enumerate(EDFfiles):
     if EDFfileName == 'suj13_l2nap_day2 edited.edf' or EDFfileName =='suj13_l2nap_day2 edited1.edf':
