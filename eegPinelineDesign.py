@@ -41,7 +41,7 @@ def change_file_directory(path_directory):
     print(os.listdir(current_directory))
 
 def split_type_of_files():
-    EDFFind = re.compile("edf", re.IGNORECASE);EDFfiles=[]
+    EEGFind = re.compile("vhdr", re.IGNORECASE);EEGfiles=[]
     TXTFind = re.compile("txt",re.IGNORECASE);Annotationfiles=[]
     """This function will go through the current directory and
     look at all the files in the directory.
@@ -49,17 +49,17 @@ def split_type_of_files():
     space for looping the feature extraction"""
     directoryList = os.listdir(os.getcwd())
     for item in directoryList:
-        if EDFFind.search(item):
-            EDFfiles.append(item)
+        if EEGFind.search(item):
+            EEGfiles.append(item)
         elif TXTFind.search(item):
             Annotationfiles.append(item)
-    return EDFfiles,Annotationfiles
+    return EEGfiles,Annotationfiles
 
 
 
-def pick_sample_file(EDFfile,n=0):
+def pick_sample_file(EEGfile,n=0):
     """I use it as a way to get names for my dictionary variables"""
-    file_to_read=EDFfile[n]
+    file_to_read=EEGfile[n]
     fileName=file_to_read.split('.')[0]
     return file_to_read,fileName
 
@@ -68,24 +68,35 @@ def load_data(file_to_read,channelList,low_frequency=5,high_frequency=50):
     """ not just load the data, but also remove artifact by using mne.ICA
         Make sure 'LOC' or 'ROC' channels are in the channel list, because they
         are used to detect muscle and eye blink movements"""
-    raw = mne.io.read_raw_edf(file_to_read,stim_channel=None,preload=True)
+    raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
+    raw.filter(1,200)
     raw.pick_channels(channelList)
-    ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-          noise_cov=None, random_state=0)
     picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
-    ica.fit(raw,picks=picks,decim=3,reject=dict(mag=4e-12, grad=4000e-13))
-    ica.detect_artifacts(raw,eog_ch=['ROC','LOC'],eog_criterion=0.5)
+    raw.notch_filter(np.arange(60,241,60), picks=picks)
+    try:
+        ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
+                  noise_cov=None, random_state=0)
+        
+        ica.fit(raw,picks=picks,decim=3,reject=dict(mag=4e-12, grad=4000e-13))
+        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.3,
+                         )
+    except:
+        ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
+                  noise_cov=None, method='extended-infomax',random_state=0)
+        
+        ica.fit(raw,picks=picks,decim=3,reject=dict(mag=4e-12, grad=4000e-13))
+        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.3,
+                         )
     clean_raw = ica.apply(raw,exclude=ica.exclude)
     if low_frequency is not None and high_frequency is not None:
         clean_raw.filter(low_frequency,high_frequency)
     elif low_frequency is not None or high_frequency is not None:
         try:
-            clean_raw.filter(low_frequency,500)
+            clean_raw.filter(low_frequency,200)
         except:
             clean_raw.filter(1,high_frequency)
     else:
         clean_raw = clean_raw
-    clean_raw.notch_filter(np.arange(60,241,60), picks=picks)
     return clean_raw
 
 def annotation_to_labels(TXTfiles,fileName,label='markon',last_letter=-1):
@@ -137,11 +148,7 @@ def structure_to_data(channelList,YLabel,raw,sample_points=1000):
 
     return data
 
-def cut_segments(raw,center,channelIndex,windowsize = 1.5):
-    startPoint=center-windowsize;endPoint=center+windowsize
-    start,stop=raw.time_as_index([startPoint,endPoint])
-    tempSegment,timeSpan=raw[channelIndex,start:stop]
-    return tempSegment,timeSpan
+
 
 
 def merge_dicts(dict1,dict2):
@@ -283,21 +290,28 @@ def add_channels(inst, data, ch_names, ch_types):
     else:
         raise ValueError('unknown inst type')
     return inst.add_channels([new_inst], copy=True)
-
-def Threshold_test(timePoint,raw_alpha,raw_spindle,raw_muscle,channelID,windowsize=2.5):
     
-    startPoint=timePoint - windowsize;endPoint=timePoint + windowsize
-    start,stop=raw_spindle.time_as_index([startPoint,endPoint])
-    filter_alpha,timeSpan = raw_alpha[channelID,start:stop]
+def cut_segments(raw,center,channelIndex,windowsize = 1.5):
+    startPoint=center-windowsize;endPoint=center+windowsize
+    start,stop=raw.time_as_index([startPoint,endPoint])
+    tempSegment,timeSpan=raw[channelIndex,start:stop]
+    return tempSegment,timeSpan
+    
+    
+def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
+    startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
+    start,stop=raw.time_as_index([startPoint,endPoint])
+    se,timeSpan=raw[channelID,start:stop]
+    
+    filter_alpha=mne.filter.band_pass_filter(se,1000,8,12)
+    filter_spindle=mne.filter.band_pass_filter(se,1000,11,16)
+    filter_muscle=mne.filter.band_pass_filter(se,1000,30,40)
+    
     RMS_alpha=np.sqrt(sum(filter_alpha[0,:]**2)/len(filter_alpha[0,:]))
-
-    filter_spindle,_=raw_spindle[channelID,start:stop]
     RMS_spindle=np.sqrt(sum(filter_spindle[0,:]**2)/len(filter_spindle[0,:]))
-
-    filter_muscle,_=raw_muscle[channelID,start:stop]
     RMS_muscle=np.sqrt(sum(filter_muscle[0,:]**2)/len(filter_muscle[0,:]))
 
-    if (RMS_alpha/RMS_spindle <1.2) and (RMS_muscle < 5*10e-4):
+    if (RMS_alpha/RMS_spindle <1.2) or (RMS_muscle < 5*10e-4):
         return True
     else:
         return False
@@ -439,7 +453,8 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
                 idel[i] = 0  # Keep current peak
         # remove the small peaks and sort back the indices by their occurrence
         ind = np.sort(ind[~idel])
-
+        
+        
     if show:
         if indnan.size:
             x[indnan] = np.nan
@@ -478,3 +493,8 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
                      % (mode, str(mph), mpd, str(threshold), edge))
         # plt.grid()
         plt.show()
+        
+def window_rms(a, window_size):
+  a2 = np.power(a,2)
+  window = np.ones(window_size)/float(window_size)
+  return 1e3 * np.sqrt(np.convolve(a2, window, 'same')/len(a2))
