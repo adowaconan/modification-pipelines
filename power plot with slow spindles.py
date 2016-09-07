@@ -22,15 +22,19 @@ def read_pickle(fileName):
     result=pickle.load(pkl_file)
     pkl_file.close()
     return result
-
-folderList = eegPinelineDesign.change_file_directory('D:\\NING - spindle')
+def rescale(M):
+    M = np.array(M)
+    return (M - M.min())/(M.max() - M.min())+2
+def tick_compare(full_frequency,target_frequency):
+    return np.where(np.abs(full_frequency-target_frequency)<.1)[0][0]
+folderList = eegPinelineDesign.change_file_directory('/media/adowaconan/Seagate Backup Plus Drive/NING - spindle')
 subjectList = np.concatenate((np.arange(11,24),np.arange(25,31),np.arange(32,33)))
 #subjectList = np.concatenate((np.arange(11,12))
 #for idx in subjectList:
 for idx in subjectList: # manually change the range, the second number is the position after the last stop
     
     folder_ = [folder_to_look for folder_to_look in folderList if (str(idx) in folder_to_look) and ('suj' in folder_to_look)]
-    current_working_folder = eegPinelineDesign.change_file_directory('D:\\NING - spindle\\'+str(folder_[0]))
+    current_working_folder = eegPinelineDesign.change_file_directory('/media/adowaconan/Seagate Backup Plus Drive/NING - spindle/'+str(folder_[0]))
     list_file_to_read = [files for files in current_working_folder if ('vhdr' in files) and ('nap' in files)]
     for file_to_read in list_file_to_read:    
         raw=mne.io.read_raw_fif(file_to_read[:-5]+'.fif',preload=True,add_eeg_ref=False)
@@ -50,13 +54,8 @@ for idx in subjectList: # manually change the range, the second number is the po
         alpha_C=np.array(alpha_C)
         DT_C=np.array(DT_C)
         ASI = np.array(ASI)
-        
-        range_alpha = np.array(psd_alpha).mean(1).max() - np.array(psd_alpha).mean(1).min()
-        range_beta = np.array(psd_beta).mean(1).max() - np.array(psd_beta).mean(1).min()
         power_slow_spindle = np.array(slow_spindle)
-        #chagne_slow_spindle
-        range_slow_spindle = np.array(slow_spindle).mean(1).max() - np.array(slow_spindle).mean(1).min()
-        My_ASI = (np.log2(np.array(psd_alpha).mean(1)/range_alpha) + np.log2(np.array(psd_beta).mean(1)/range_beta )) / np.log2(power_slow_spindle.mean(1)/range_slow_spindle)
+        My_ASI = (np.log2(rescale(np.array(psd_alpha).mean(1))) + np.log2(rescale(np.array(psd_beta).mean(1)))) / np.log2(rescale(power_slow_spindle.mean(1)))
         
         result['alpha activity']=alpha_C;result['sum of delta and theta']=DT_C
         result['activity across 6 bands']=activity;result['delta 0-2']=psd_delta1
@@ -72,7 +71,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         result_name = file_to_read[:-5] + '_slow_spindle.p'
         pickle.dump( result, open( result_name, "wb" ) )
         
-        raw.filter(12,14)
+        raw.filter(10,12)
         segment,time=raw[0,:]
             
         spindles = pd.read_csv(file_to_read[:-5]+'_slow_spindle.csv')
@@ -148,7 +147,7 @@ for idx in subjectList: # manually change the range, the second number is the po
                    yticklabels=(['gamma','beta','alpha','theta','delta2','delta1']))
         
         #fig 9 in middle,4th
-        ax9.plot(epochs[1:-1],My_ASI,color='black',alpha=1.,label='ASI');ax9.set(title='$alpha + beta / fast_spindle_activity$',ylabel='ratio unit')
+        ax9.plot(epochs[1:-1],My_ASI,color='black',alpha=1.,label='ASI');ax9.set(title='alpha + beta / slow_spindle_activity',ylabel='ratio unit')
         ax99.plot(epochs[1:-1],pd.qcut(np.array(My_ASI),4,labels=False),color='r',alpha=0.3,label='cate ASI')
         ax99.set(yticks=[0,1,2,3],yticklabels=[1,2,3,4],ylim=[-0.1,3.1])
         try:
@@ -161,11 +160,11 @@ for idx in subjectList: # manually change the range, the second number is the po
         ax_im=plt.subplot(616,sharex=ax8_im)
         xx,yy = np.meshgrid(epochs[1:-1],np.arange(activity.shape[1]))
         im=ax_im.imshow(np.flipud(activity.T),cmap=plt.cm.Blues,aspect='auto')
-        ax_im.set(yticks=activity.T.shape[0]-np.arange(activity.T.shape[0])[[10,30,65,90,150]],
+        ax_im.set(yticks=activity.T.shape[0]-np.arange(activity.T.shape[0])[[tick_compare(f,1),tick_compare(f,3),tick_compare(f,6),tick_compare(f,10),tick_compare(f,16)]],
                   yticklabels=(['delta1','delta2','theta','alpha','beta']),
                                title='mean power spectral density',
-                               xticks=np.arange(len(epochs[1:-1]))[0::20],
-                               xticklabels=epochs[1:-1:20],
+                               xticks=np.arange(len(epochs[1:-1]))[0::len(epochs)/8],
+                               xticklabels=epochs[1:-1:len(epochs)/8],
                                xlabel='time (sec)',ylabel='frequency bands')
         #plt.colorbar(im)
         plt.tight_layout()

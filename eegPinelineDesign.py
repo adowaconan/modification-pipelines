@@ -23,19 +23,22 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.cross_validation import cross_val_score
 from scipy.fftpack import fft,ifft
 import math
-from sklearn.metrics import classification_report,accuracy_score,confusion_matrix,precision_recall_curve,average_precision_score
+from sklearn.metrics import classification_report,accuracy_score,confusion_matrix
 from scipy.signal import spectrogram,find_peaks_cwt,butter, lfilter
 from mne.preprocessing.ica import ICA
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import average_precision_score
 from sklearn.cross_validation import train_test_split,ShuffleSplit
-from sklearn.preprocessing import label_binarize,scale,StandardScaler
+from sklearn.preprocessing import label_binarize,scale
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
+from sklearn.preprocessing import label_binarize,StandardScaler
 from mne.time_frequency import psd_multitaper
+
 #from obspy.signal.filter import bandpass
 
 def change_file_directory(path_directory):
-    '''Change working directory
-       Return the list of whatever are in the directory'''
+    '''Change working directory'''
     current_directory=os.chdir(path_directory)
     #print(os.listdir(current_directory))
     return os.listdir(current_directory)
@@ -68,35 +71,25 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
     """ not just load the data, but also remove artifact by using mne.ICA
         Make sure 'LOC' or 'ROC' channels are in the channel list, because they
         are used to detect muscle and eye blink movements"""
-    """ file_to_read - file name
-        low_frequency - high pass cutoff
-        high_frequency - low pass cutoff
-        eegReject - the amplitude range for rejecting, used in eeg channels
-        eogReject - the amplitude range for rejecting, used in eog channels
-        n_ch - number of channels used in ICA correcting"""
-    """ Return
-        ICA corrected raw data"""
-    c=200 # low pass cutoff
+    c=200
     try:
         raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
-        #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']# if use all the channels,don't need this line
+        #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
         chan_list=raw.ch_names[:n_ch]
-        # a check if loc or roc is in the list
         if 'LOc' not in chan_list:
             chan_list.append('LOc')
         if 'ROc' not in chan_list:
             chan_list.append('ROc')
-
+    
         raw.pick_channels(chan_list)
-        # define eog channels
+        
         raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=True,stim=False)
         raw.notch_filter(np.arange(60,241,60), picks=picks)
         reject = dict(eeg=eegReject,
                   eog=eogReject)
-        raw.filter(1,c)# bandpass data
+        raw.filter(1,c)
         raw_proj = mne.compute_proj_raw(raw,n_eeg=1,reject=reject)
-        # compute the eog values and projects being used in later SPP correction. Still in developing
         eog_proj,ev = mne.preprocessing.compute_proj_eog(raw,n_eeg=1,average=True,reject=reject,
                                              l_freq=1,h_freq=c,
                                              eog_l_freq=1,eog_h_freq=c)
@@ -110,13 +103,12 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
         ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
                   noise_cov=None, random_state=0)
         ica.fit(raw,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
-        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,# a very liberal criteria for eog detection
+        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
                              skew_criterion=2,kurt_criterion=2,var_criterion=2)
         a,b=ica.find_bads_eog(raw)
         ica.exclude += a
     except:
         print('alternative')
-        # pipeline example showed in MNE python tutorials
         raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
         #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
         chan_list=raw.ch_names[:n_ch]
@@ -124,13 +116,13 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
             chan_list.append('LOc')
         if 'ROc' not in chan_list:
             chan_list.append('ROc')
-
+    
         raw.pick_channels(chan_list)
         raw.filter(1,c)
         picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
         raw.notch_filter(np.arange(60,241,60), picks=picks)
         reject = dict(eeg=eegReject)
-
+        
         ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
                   noise_cov=None, random_state=0)
         ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
@@ -139,7 +131,8 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
         raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         a,b=ica.find_bads_eog(raw)
         ica.exclude += a
-
+        
+    
     clean_raw = ica.apply(raw,exclude=ica.exclude)
     if low_frequency is not None and high_frequency is not None:
         clean_raw.filter(low_frequency,high_frequency)
@@ -201,14 +194,15 @@ def structure_to_data(channelList,YLabel,raw,sample_points=1000):
 
     return data
 
+
+
+
 def merge_dicts(dict1,dict2):
-    """ Taking wo dictionaries and merge into one, working as appending dictionaries"""
     for key, value in dict2.items():
         dict1.setdefault(key,[]).extend(value)
     return dict1
 
 def logistic_func(theta, x):
-    """ logistic function used in logistic regression/classification"""
     return 1./(1+np.exp(x.dot(theta)))
 def log_gradient(theta, x, y):
     first_calc = logistic_func(theta, x) - np.squeeze(y)
@@ -223,14 +217,13 @@ def cost_func(theta, x, y):
     return np.mean(final)
 def grad_desc(theta_values, X, y, lr=10e-8, converge_change=10e-6):
     #normalize
-    X = (X - np.mean(X, axis=0)) / np.std(X, axis=0)
+    #X = (X - np.mean(X, axis=0)) / np.std(X, axis=0)
     #setup cost iter
     cost_iter = []
     cost = cost_func(theta_values, X, y)
     cost_iter.append([0, cost])
     change_cost = 1
     i = 1
-    # loop for converging
     while(change_cost > converge_change):
         old_cost = cost
         theta_values = theta_values - (lr * log_gradient(theta_values, X, y))
@@ -276,21 +269,17 @@ def annotation_file(TXTFiles,sample_number=0):
     return file
 
 def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
-    fig = plt.figure(figsize=(15,15))
-    ax = plt.subplot(111)
-    ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
     plt.colorbar()
-    ax.set(title=title, ylabel='True label',xlabel='Predicted label')
-    return fig
+
+
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
 
 def center_window_by_max_amplitude(raw,time,channelList,windowsWidth=2.0):
-    """raw - MNE raw data
-       time - time point of interest
-       channelList - channel list of interest
-       windowsWidth - half of the window based on the time point of interest"""
-    """take a segment of raw data that centered at the time point of interest and
-       find the peak of the data, and then re-center the segment of data based on
-       the peak of the data."""
+    '''The function goes through all channels and return data.frame of
+       centered data'''
     startPoint=time-windowsWidth;endPoint=time+windowsWidth
     start,stop=raw.time_as_index([startPoint,endPoint])
     tempsegment,timespan=raw[:,start:stop]
@@ -331,7 +320,6 @@ def standardized(x):
 
 
 def add_channels(inst, data, ch_names, ch_types):
-    """unsecessful implementation"""
     from mne.io import _BaseRaw, RawArray
     from mne.epochs import _BaseEpochs, EpochsArray
     from mne import create_info
@@ -348,33 +336,23 @@ def add_channels(inst, data, ch_names, ch_types):
     else:
         raise ValueError('unknown inst type')
     return inst.add_channels([new_inst], copy=True)
-
+    
 def cut_segments(raw,center,channelIndex,windowsize = 1.5):
-    """raw - MNE raw data
-       center - center of the segment of data
-       channelIndex - index of channel for specific
-       windowsize - half of the segment"""
-    """return
-       segment of the raw data in one of the channels
-       time span of the segment in seconds"""
     startPoint=center-windowsize;endPoint=center+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     tempSegment,timeSpan=raw[channelIndex,start:stop]
     return tempSegment,timeSpan
-
-
+    
+    
 def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
-    """Threshold test using arbitary threshold values extracted from an old paper."""
-    """ RMS_alpha / RMS_spindle indicates movements of interest
-        RMS_muscle indicates artifacts"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     se,timeSpan=raw[channelID,start:stop]
-
+    
     filter_alpha=mne.filter.band_pass_filter(se,1000,8,12)
     filter_spindle=mne.filter.band_pass_filter(se,1000,11,16)
     filter_muscle=mne.filter.band_pass_filter(se,1000,30,40)
-
+    
     RMS_alpha=np.sqrt(sum(filter_alpha[0,:]**2)/len(filter_alpha[0,:]))
     RMS_spindle=np.sqrt(sum(filter_spindle[0,:]**2)/len(filter_spindle[0,:]))
     RMS_muscle=np.sqrt(sum(filter_muscle[0,:]**2)/len(filter_muscle[0,:]))
@@ -386,27 +364,14 @@ def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
 
 
 def getOverlap(a,b):
-    """a - 1D list or array
-       b - 1D list or array
-       return
-       the overlapping values/element of the lists/arrays"""
     return max(0,min(a[1],b[1]) - max(a[0],b[0]))
-
 def intervalCheck(a,b):
-    """a - 1D list or array
-       b - numeric float or integer values"""
     return a[0] <= b <= a[1]
-
 def spindle_overlapping_test(spindles,timePoint,windowsize,tolerance=0.01):
-    """ spindles - time points of spindle sample
-       timePoint - time points of other measurements
-       windowsize - size of windows of interests
-       tolerance - the comparison allows some off metrics"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     return all(getOverlap([startPoint,endPoint],[instance-windowsize,instance+windowsize])<=tolerance for instance in spindles)
 
 def used_windows_check(timePoint,used_time_windows,windowsize,tolerance=0.01):
-    """ this function is used in sampling spindle examples for later machine learning feeding"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     return all(getOverlap([startPoint,endPoint],[lower,upper])<=tolerance for (lower,upper) in used_time_windows)
 
@@ -448,8 +413,8 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     -----
     The detection of valleys instead of peaks is performed internally by simply
     negating the data: `ind_valleys = detect_peaks(-x)`
-
-    The function can handle NaN's
+    
+    The function can handle NaN's 
 
     See this IPython Notebook [1]_.
 
@@ -536,8 +501,8 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
                 idel[i] = 0  # Keep current peak
         # remove the small peaks and sort back the indices by their occurrence
         ind = np.sort(ind[~idel])
-
-
+        
+        
     if show:
         if indnan.size:
             x[indnan] = np.nan
@@ -576,18 +541,18 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
                      % (mode, str(mph), mpd, str(threshold), edge))
         # plt.grid()
         plt.show()
-
+        
 def window_rms(a, window_size):
-    """Moving window to calculate root mean square of the raw EEG data"""
-    a2 = np.power(a,2)
-    window = scipy.signal.gaussian(window_size,(window_size/.68)/2)
-    return np.sqrt(np.convolve(a2, window, 'same')/len(a2)) * 1e2
-
+  a2 = np.power(a,2)
+  window = scipy.signal.gaussian(window_size,(window_size/.68)/2)
+  return np.sqrt(np.convolve(a2, window, 'same')/len(a2)) * 1e2
+  
+  
 def distance_check(list_of_comparison, time):
     list_of_comparison=np.array(list_of_comparison)
     condition = list_of_comparison - time < 1
     return condition
-
+    
 
 def RMS_pass(pass_,time,RMS):
     temp = []
@@ -598,7 +563,7 @@ def RMS_pass(pass_,time,RMS):
         up = up[0][:size]
         down = down[0][:size]
     C = np.vstack((up,down))
-
+    
     for pairs in C.T:
         if 0.5 < (time[pairs[1]] - time[pairs[0]]) < 2:
             TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
@@ -606,11 +571,11 @@ def RMS_pass(pass_,time,RMS):
             temp_temp_time = time[pairs[0]:pairs[1]]
             ints_temp = np.argmax(SegmentForPeakSearching)
             temp.append(temp_temp_time[ints_temp])
-
+            
     return temp
 
 def RMS_calculation(intervals,dataSegment,mul):
-    segment = dataSegment[0,:]
+    segment = dataSegment[0,:]    
     time = np.linspace(intervals[0],intervals[1],len(segment))
     RMS = window_rms(segment,200)
     mph=scipy.stats.trim_mean(RMS,0.05) + mul * RMS.std()
@@ -644,9 +609,9 @@ def validation(val_file,result,tol=1):
     for row in file2.iterrows():
         currentEvent = row[1][-1]
         if labelFind.search(currentEvent):
-            spindles.append(row[1][0])# time of marker
+            spindles.append(row[1][0])# time of marker    
     spindles = np.array(spindles)
-
+    
     peak_time = result['Onset'].values
     Time_found = peak_time
     match=[]
@@ -669,20 +634,20 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
     for row in file2.iterrows():
         currentEvent = row[1][-1]
         if labelFind.search(currentEvent):
-            stage2.append([row[1][0],row[1][0]+30])# time of marker
-    stage2 = np.array(stage2)
+            stage2.append([row[1][0],row[1][0]+30])# time of marker    
+    stage2 = np.array(stage2)    
     print('finish loading annotations')
-    peak_time={}
+    peak_time={} 
     result=[]
     for intervals in stage2:
         print(intervals)
         RMS = np.zeros((6,30*1e3))
         peak_time[intervals[0]]={}
         for ii, names in enumerate(channelList):
-
+            
             dataSegment,_=cut_segments(raw,np.mean(intervals),ii,windowsize=30/2)
             peak_time[intervals[0]][names],RMS[ii,:],time=RMS_calculation(intervals,dataSegment,mul)
-
+        
         peak_time['mean']=[]
         RMS_mean=hmean(RMS)
         RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
@@ -690,33 +655,33 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
         mph = RMS_mean.mean() + mul * RMS_mean.std()
         pass_ = RMS_mean > mph
         peak_time[intervals[0]]['mean']=RMS_pass(pass_,time,RMS_mean)
-
+        
         print(peak_time[intervals[0]])
-
-
+        
+        
         result.append(find_time(peak_time[intervals[0]],number=majority))
     from itertools import chain
     result = list(chain.from_iterable(result))
     result = pd.DataFrame(result,columns=['center of spindles'])
     result['comment']='spindle'
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
-
+    
     return peak_time, result,spindles, match, mismatch
 def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,majority=3,mul=0.8):
     channelList = ['F3','F4','C3','C4','O1','O2']
     raw = load_data(file_to_read,lowCut,highCut,180)
     raw.pick_channels(channelList)
     print('finish loading data')
-
+    
     time = np.linspace(0,raw._data[0,:].shape[0]/1000,raw._data[0,:-1].shape[0])
     RMS = np.zeros((6,raw._data[0,:].shape[0]))
     peak_time={}
     for ii, names in enumerate(channelList):
-
+            
         peak_time[names]=[]
         dataSegment,temptime = raw[ii,:raw.last_samp]
         peak_time[names],RMS[ii,:],time=RMS_calculation([temptime[0],temptime[-1]],dataSegment,mul)
-
+        
     peak_time['mean']=[]
     RMS_mean=hmean(RMS)
     RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
@@ -730,13 +695,13 @@ def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,major
     result = result[result.Onset > 30]
     result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 60)]
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
-
+    
     return peak_time, result,spindles, match, mismatch
-
+    
 def TS_analysis(raw,epch,picks,l_freq=8,h_freq=12):
     psd_,f=psd_multitaper(raw,tmin=epch[0],tmax=epch[1],fmin=l_freq,fmax=h_freq,picks=picks,n_jobs=-1)
     return psd_,f
-
+    
 def make_overlap_windows(raw,epoch_length=10):
     candidates = np.arange(raw.first_samp/1000, raw.last_samp/1000,epoch_length/2)
     epochs=[]
@@ -747,16 +712,21 @@ def make_overlap_windows(raw,epoch_length=10):
         else:
             epochs.append([item,candidates[ii+2]])
     return np.array(epochs)
+    
+
+def update_progress(progress,total):
+    print('\r{0:.3f}%'.format(progress/total),end="",flush=True)
 def epoch_activity(raw,picks,epoch_length=10):
-
+    
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
-
+    
     alpha_C=[];DT_C=[];ASI=[];activity=[];ave_activity=[];slow_spindle=[];fast_spindle=[]
     psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[]
-    print('calculating power spectal density')
-    for epch in epochs:
-        #print(epch,end=',')
-
+    
+    print('calculating power spectral density')
+    for ii,epch in enumerate(epochs):
+        
+        update_progress(ii,len(epochs))
         psds,f = TS_analysis(raw,epch,picks,0,40)
         psds = psds[0]
         psds = 10*np.log10(psds)
@@ -768,34 +738,34 @@ def epoch_activity(raw,picks,epoch_length=10):
         temp_psd_gamma  = psds[np.where((f>=20))]
         temp_slow_spindle = psds[np.where((f>=9) & (f<=12))]
         temp_fast_spindle = psds[np.where((f>=12) & (f<=15))]
-
+        
         temp_activity = [temp_psd_delta1.mean(),
                          temp_psd_delta2.mean(),
                          temp_psd_theta.mean(),
-                         temp_psd_alpha.mean(),
+                         temp_psd_alpha.mean(), 
                          temp_psd_beta.mean(),
                          temp_psd_gamma.mean()]
-
+    
         temp_ASI = temp_psd_alpha.mean() /( temp_psd_delta2.mean() + temp_psd_theta.mean())
-
+    
         alpha_C.append(temp_psd_alpha.mean())
         DT_C.append(temp_psd_delta2.mean() + temp_psd_theta.mean())
         ASI.append(temp_ASI)
         ave_activity.append(temp_activity)
-        activity.append(psds[:200])
+        activity.append(psds[:np.where(f<=20)[0][-1]])#zoom in to beta
         slow_spindle.append(temp_slow_spindle)
         fast_spindle.append(temp_fast_spindle)
         psd_delta1.append(temp_psd_delta1);psd_delta2.append(temp_psd_delta2)
         psd_theta.append(temp_psd_theta);psd_alpha.append(temp_psd_alpha)
         psd_beta.append(temp_psd_beta);psd_gamma.append(temp_psd_gamma)
-    slow_range=f[np.where((f>=9) & (f<=12))];fast_range=f[np.where((f>=12) & (f<=15))]
+    slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12.2) & (f<=14.7))]
     return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range
-
+    
 def mean_without_outlier(data):
     outlier_threshold = data.mean() + data.std()*3
     temp_data = data[np.logical_and(-outlier_threshold < data, data < outlier_threshold)]
     return temp_data.mean()
-
+    
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2):
     mul=threshold
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -806,13 +776,13 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     ax1=plt.subplot(312,sharex=ax)
     ax2=plt.subplot(313,sharex=ax)
     for ii, names in enumerate(channelList):
-
+            
         peak_time[names]=[]
         segment = raw._data[ii,:]
         RMS[ii,:] = window_rms(segment,moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * RMS[ii,:].std() # higher sd = more strict criteria
         pass_= RMS[ii,:] > mph
-
+            
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
         if (up[0].shape > down[0].shape) or (up[0].shape < down[0].shape):
@@ -836,7 +806,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         ax1.set(xlabel='time',ylabel='Amplitude')
         ax.axhline(mph,color='r',alpha=0.03)
         ax2.legend();ax.legend()
-
+    
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
@@ -862,8 +832,8 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
             duration.append(duration_temp)
     ax1.axhline(mph,color='r',alpha=1.)
     ax1.set_xlim([time[0],time[-1]])
-
-
+        
+        
     time_find=[];mean_peak_power=[];Duration=[]
     for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
         temp_timePoint=[]
