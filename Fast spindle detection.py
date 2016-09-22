@@ -29,15 +29,15 @@ for idx in subjectList: # manually change the range, the second number is the po
             raw = mne.io.read_raw_fif(file_to_read[:-5] + '.fif',preload=True,add_eeg_ref=False)
         else:
             try:
-                raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=180,eogReject=300,n_ch=64)
+                raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=180,eogReject=300,n_ch=-2)
             except:
                 try:
-                    raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=240,eogReject=300,n_ch=64)
+                    raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=240,eogReject=300,n_ch=-2)
                 except:
                     try:
-                        raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=300,eogReject=300,n_ch=64)
+                        raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=300,eogReject=300,n_ch=-2)
                     except:
-                        raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=360,eogReject=300,n_ch=64)
+                        raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=360,eogReject=300,n_ch=-2)
             raw.save(file_to_read[:-5] + '.fif',overwrite=True)
         raw.filter(12.5,14.5)
         channelList = ['F3','F4','C3','C4','O1','O2']

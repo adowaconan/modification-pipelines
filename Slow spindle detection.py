@@ -17,8 +17,8 @@ import pandas as pd
 
 folderList = eegPinelineDesign.change_file_directory('D:\\NING - spindle')
 subjectList = np.concatenate((np.arange(11,24),np.arange(25,31),np.arange(32,33)))
-had = False
-for idx in [29,30,32]: # manually change the range, the second number is the position after the last stop
+had = True
+for idx in subjectList: # manually change the range, the second number is the position after the last stop
     
     folder_ = [folder_to_look for folder_to_look in folderList if str(idx) in folder_to_look]
     current_working_folder = eegPinelineDesign.change_file_directory('D:\\NING - spindle\\'+str(folder_[0]))

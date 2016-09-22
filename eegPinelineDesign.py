@@ -82,6 +82,31 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
             chan_list.append('ROc')
 
         raw.pick_channels(chan_list)
+        raw.filter(1,c)
+        picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
+        raw.notch_filter(np.arange(60,241,60), picks=picks)
+        reject = dict(eeg=eegReject)
+
+        ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
+                  noise_cov=None, random_state=0)
+        ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
+        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
+                             skew_criterion=2,kurt_criterion=2,var_criterion=2)
+        raw.set_channel_types({'LOc':'eog','ROc':'eog'})
+        a,b=ica.find_bads_eog(raw)
+        ica.exclude += a
+        
+    except:
+        print('alternative')
+        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
+        #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
+        chan_list=raw.ch_names[:n_ch]
+        if 'LOc' not in chan_list:
+            chan_list.append('LOc')
+        if 'ROc' not in chan_list:
+            chan_list.append('ROc')
+
+        raw.pick_channels(chan_list)
 
         raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=True,stim=False)
@@ -105,30 +130,6 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
         ica.fit(raw,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
         ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
                              skew_criterion=2,kurt_criterion=2,var_criterion=2)
-        a,b=ica.find_bads_eog(raw)
-        ica.exclude += a
-    except:
-        print('alternative')
-        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
-        #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
-        chan_list=raw.ch_names[:n_ch]
-        if 'LOc' not in chan_list:
-            chan_list.append('LOc')
-        if 'ROc' not in chan_list:
-            chan_list.append('ROc')
-
-        raw.pick_channels(chan_list)
-        raw.filter(1,c)
-        picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
-        raw.notch_filter(np.arange(60,241,60), picks=picks)
-        reject = dict(eeg=eegReject)
-
-        ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-                  noise_cov=None, random_state=0)
-        ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
-        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
-                             skew_criterion=2,kurt_criterion=2,var_criterion=2)
-        raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         a,b=ica.find_bads_eog(raw)
         ica.exclude += a
 
