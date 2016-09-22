@@ -17,7 +17,7 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 6. bandpass 1-50 Hz
 
 # Detecting spindles:
-1. bandpass slow/fast spindle range (10-12Hz/12.5-14.5Hz) (Begmann et al., 2012)[http://www.ncbi.nlm.nih.gov/pubmed/22037418]
+1. bandpass slow/fast spindle range (10-12Hz/12.5-14.5Hz) [(Begmann et al., 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22037418])
 2. select channels: F3, F4, C3, C4, O1, O2
 3. use a moving window to compute root-mean-square (RMS): Gaussian window, standard deviation = windown length / .68 / 2, window length = 200 samples, convolution using central part of convolution of the same size
 4. compute the harmonic mean of the RMSs of the 6 channels and call it the mean channel
