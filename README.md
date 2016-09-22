@@ -8,7 +8,7 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
  2. ASI capturing alpha,beta,spindle activity in terms of power density
 
 
-# ICA parameters:
+# [ICA parameters](martinos.org/mne/stable/auto_tutorials/plot_artifacts_correlation_ica.html):
 1. bandpass 1-200 Hz
 2. apply notch filter at 60 Hz
 3. MNE ICA: iterration = 3000, fixed random state
@@ -27,7 +27,7 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 8. post threshold parameter: segments that is above the threshold and duration of the segments is in between 0.5 - 2 secs
 9. determining spindles: find spindles in AT LEAST (>=) 3 channels AND find spindle in average channel at the similar time stamp (deviate < 1 second)
 
-# Power spetral density analysis
+# [Power spetral density analysis](spisop.org/documentation)
 1. delta 1: 0-2 Hz
 2. delta 2: 2-4 Hz
 3. theta: 4-8 Hz
