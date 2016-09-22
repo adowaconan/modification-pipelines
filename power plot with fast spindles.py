@@ -25,16 +25,14 @@ def read_pickle(fileName):
 def rescale(M):
     M = np.array(M)
     return (M - M.min())/(M.max() - M.min())+2
-def tick_compare(full_frequency,target_frequency):
-    return np.where(np.abs(full_frequency-target_frequency)<.1)[0][0]
-folderList = eegPinelineDesign.change_file_directory('/media/adowaconan/Seagate Backup Plus Drive/NING - spindle')
+folderList = eegPinelineDesign.change_file_directory('D:\\NING - spindle')
 subjectList = np.concatenate((np.arange(11,24),np.arange(25,31),np.arange(32,33)))
 #subjectList = np.concatenate((np.arange(11,12))
 #for idx in subjectList:
 for idx in subjectList: # manually change the range, the second number is the position after the last stop
     
     folder_ = [folder_to_look for folder_to_look in folderList if (str(idx) in folder_to_look) and ('suj' in folder_to_look)]
-    current_working_folder = eegPinelineDesign.change_file_directory('/media/adowaconan/Seagate Backup Plus Drive/NING - spindle/'+str(folder_[0]))
+    current_working_folder = eegPinelineDesign.change_file_directory('D:\\NING - spindle\\'+str(folder_[0]))
     list_file_to_read = [files for files in current_working_folder if ('vhdr' in files) and ('nap' in files)]
     for file_to_read in list_file_to_read:    
         raw=mne.io.read_raw_fif(file_to_read[:-5]+'.fif',preload=True,add_eeg_ref=False)
@@ -48,8 +46,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         raw.pick_channels(channelList)
         picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False,stim=False)
         result={}
-        alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range = eegPinelineDesign.epoch_activity(raw,picks=picks,epoch_length=epoch_length)
-        _,f=eegPinelineDesign.TS_analysis(raw,eegPinelineDesign.make_overlap_windows(raw,epoch_length)[0],picks,0,20)        
+        alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range = eegPinelineDesign.epoch_activity(raw,picks=picks)
         activity = np.array(activity)
         ave_activity=np.array(ave_activity)
         alpha_C=np.array(alpha_C)
@@ -71,7 +68,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         
         result_name = file_to_read[:-5] + '_fast_spindle.p'
         pickle.dump( result, open( result_name, "wb" ) )
-        print(' ')
+        
         raw.filter(12.5,14.5)
         segment,time=raw[0,:]
             
@@ -91,7 +88,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         ax8_im = plt.subplot(615)
         ax9 = plt.subplot(614,sharex=ax7);ax99=ax9.twinx()
         # fig 1
-        ax1.plot(epochs[1:-1],np.array(psd_alpha),alpha=0.2)
+        ax1.plot(epochs[1:-1],np.array(psd_alpha),alpha=0.1)
         ax1.plot(epochs[1:-1],np.array(psd_alpha).mean(1),alpha=1.,color='black',label='average alpha activity')
         try:
             ax1.scatter(spindles['Onset'],np.mean(psd_alpha)*np.ones(len(spindles)))
@@ -99,7 +96,7 @@ for idx in subjectList: # manually change the range, the second number is the po
             pass
         ax1.set(ylabel='power %s'%channelList,title='average alpha activity 8-12 Hz',xlim=[raw.first_samp/raw.info['sfreq'],raw.last_samp/raw.info['sfreq']])
         # fig 2
-        ax2.plot(epochs[1:-1],psd_beta,alpha=0.2);ax2.set(title='average beta activity 12-20 Hz')
+        ax2.plot(epochs[1:-1],psd_beta,alpha=0.1);ax2.set(title='average beta activity 12-20 Hz')
         ax2.plot(epochs[1:-1],np.array(psd_beta).mean(1),alpha=1.,color='black',label='beta')
         try:
             ax2.scatter(spindles['Onset'],np.mean(psd_beta)*np.ones(len(spindles)))
@@ -161,11 +158,11 @@ for idx in subjectList: # manually change the range, the second number is the po
         ax_im=plt.subplot(616,sharex=ax8_im)
         xx,yy = np.meshgrid(epochs[1:-1],np.arange(activity.shape[1]))
         im=ax_im.imshow(np.flipud(activity.T),cmap=plt.cm.Blues,aspect='auto')
-        ax_im.set(yticks=activity.T.shape[0]-np.arange(activity.T.shape[0])[[tick_compare(f,1),tick_compare(f,3),tick_compare(f,6),tick_compare(f,10),tick_compare(f,16)]],
+        ax_im.set(yticks=activity.T.shape[0]-np.arange(activity.T.shape[0])[[10,30,65,90,150]],
                   yticklabels=(['delta1','delta2','theta','alpha','beta']),
                                title='mean power spectral density',
-                               xticks=np.arange(len(epochs[1:-1]))[0::len(epochs)/8],
-                               xticklabels=epochs[1:-1:len(epochs)/8],
+                               xticks=np.arange(len(epochs[1:-1]))[0::20],
+                               xticklabels=epochs[1:-1:20],
                                xlabel='time (sec)',ylabel='frequency bands')
         #plt.colorbar(im)
         plt.tight_layout()
