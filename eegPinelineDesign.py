@@ -80,9 +80,9 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
             chan_list.append('LOc')
         if 'ROc' not in chan_list:
             chan_list.append('ROc')
-    
+
         raw.pick_channels(chan_list)
-        
+
         raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=True,stim=False)
         raw.notch_filter(np.arange(60,241,60), picks=picks)
@@ -116,13 +116,13 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
             chan_list.append('LOc')
         if 'ROc' not in chan_list:
             chan_list.append('ROc')
-    
+
         raw.pick_channels(chan_list)
         raw.filter(1,c)
         picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
         raw.notch_filter(np.arange(60,241,60), picks=picks)
         reject = dict(eeg=eegReject)
-        
+
         ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
                   noise_cov=None, random_state=0)
         ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
@@ -131,8 +131,8 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
         raw.set_channel_types({'LOc':'eog','ROc':'eog'})
         a,b=ica.find_bads_eog(raw)
         ica.exclude += a
-        
-    
+
+
     clean_raw = ica.apply(raw,exclude=ica.exclude)
     if low_frequency is not None and high_frequency is not None:
         clean_raw.filter(low_frequency,high_frequency)
@@ -336,23 +336,23 @@ def add_channels(inst, data, ch_names, ch_types):
     else:
         raise ValueError('unknown inst type')
     return inst.add_channels([new_inst], copy=True)
-    
+
 def cut_segments(raw,center,channelIndex,windowsize = 1.5):
     startPoint=center-windowsize;endPoint=center+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     tempSegment,timeSpan=raw[channelIndex,start:stop]
     return tempSegment,timeSpan
-    
-    
+
+
 def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     se,timeSpan=raw[channelID,start:stop]
-    
+
     filter_alpha=mne.filter.band_pass_filter(se,1000,8,12)
     filter_spindle=mne.filter.band_pass_filter(se,1000,11,16)
     filter_muscle=mne.filter.band_pass_filter(se,1000,30,40)
-    
+
     RMS_alpha=np.sqrt(sum(filter_alpha[0,:]**2)/len(filter_alpha[0,:]))
     RMS_spindle=np.sqrt(sum(filter_spindle[0,:]**2)/len(filter_spindle[0,:]))
     RMS_muscle=np.sqrt(sum(filter_muscle[0,:]**2)/len(filter_muscle[0,:]))
@@ -413,8 +413,8 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     -----
     The detection of valleys instead of peaks is performed internally by simply
     negating the data: `ind_valleys = detect_peaks(-x)`
-    
-    The function can handle NaN's 
+
+    The function can handle NaN's
 
     See this IPython Notebook [1]_.
 
@@ -501,8 +501,8 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
                 idel[i] = 0  # Keep current peak
         # remove the small peaks and sort back the indices by their occurrence
         ind = np.sort(ind[~idel])
-        
-        
+
+
     if show:
         if indnan.size:
             x[indnan] = np.nan
@@ -541,18 +541,18 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
                      % (mode, str(mph), mpd, str(threshold), edge))
         # plt.grid()
         plt.show()
-        
+
 def window_rms(a, window_size):
   a2 = np.power(a,2)
   window = scipy.signal.gaussian(window_size,(window_size/.68)/2)
   return np.sqrt(np.convolve(a2, window, 'same')/len(a2)) * 1e2
-  
-  
+
+
 def distance_check(list_of_comparison, time):
     list_of_comparison=np.array(list_of_comparison)
     condition = list_of_comparison - time < 1
     return condition
-    
+
 
 def RMS_pass(pass_,time,RMS):
     temp = []
@@ -563,7 +563,7 @@ def RMS_pass(pass_,time,RMS):
         up = up[0][:size]
         down = down[0][:size]
     C = np.vstack((up,down))
-    
+
     for pairs in C.T:
         if 0.5 < (time[pairs[1]] - time[pairs[0]]) < 2:
             TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
@@ -571,11 +571,11 @@ def RMS_pass(pass_,time,RMS):
             temp_temp_time = time[pairs[0]:pairs[1]]
             ints_temp = np.argmax(SegmentForPeakSearching)
             temp.append(temp_temp_time[ints_temp])
-            
+
     return temp
 
 def RMS_calculation(intervals,dataSegment,mul):
-    segment = dataSegment[0,:]    
+    segment = dataSegment[0,:]
     time = np.linspace(intervals[0],intervals[1],len(segment))
     RMS = window_rms(segment,200)
     mph=scipy.stats.trim_mean(RMS,0.05) + mul * RMS.std()
@@ -609,9 +609,9 @@ def validation(val_file,result,tol=1):
     for row in file2.iterrows():
         currentEvent = row[1][-1]
         if labelFind.search(currentEvent):
-            spindles.append(row[1][0])# time of marker    
+            spindles.append(row[1][0])# time of marker
     spindles = np.array(spindles)
-    
+
     peak_time = result['Onset'].values
     Time_found = peak_time
     match=[]
@@ -634,20 +634,20 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
     for row in file2.iterrows():
         currentEvent = row[1][-1]
         if labelFind.search(currentEvent):
-            stage2.append([row[1][0],row[1][0]+30])# time of marker    
-    stage2 = np.array(stage2)    
+            stage2.append([row[1][0],row[1][0]+30])# time of marker
+    stage2 = np.array(stage2)
     print('finish loading annotations')
-    peak_time={} 
+    peak_time={}
     result=[]
     for intervals in stage2:
         print(intervals)
         RMS = np.zeros((6,30*1e3))
         peak_time[intervals[0]]={}
         for ii, names in enumerate(channelList):
-            
+
             dataSegment,_=cut_segments(raw,np.mean(intervals),ii,windowsize=30/2)
             peak_time[intervals[0]][names],RMS[ii,:],time=RMS_calculation(intervals,dataSegment,mul)
-        
+
         peak_time['mean']=[]
         RMS_mean=hmean(RMS)
         RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
@@ -655,33 +655,33 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
         mph = RMS_mean.mean() + mul * RMS_mean.std()
         pass_ = RMS_mean > mph
         peak_time[intervals[0]]['mean']=RMS_pass(pass_,time,RMS_mean)
-        
+
         print(peak_time[intervals[0]])
-        
-        
+
+
         result.append(find_time(peak_time[intervals[0]],number=majority))
     from itertools import chain
     result = list(chain.from_iterable(result))
     result = pd.DataFrame(result,columns=['center of spindles'])
     result['comment']='spindle'
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
-    
+
     return peak_time, result,spindles, match, mismatch
 def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,majority=3,mul=0.8):
     channelList = ['F3','F4','C3','C4','O1','O2']
     raw = load_data(file_to_read,lowCut,highCut,180)
     raw.pick_channels(channelList)
     print('finish loading data')
-    
+
     time = np.linspace(0,raw._data[0,:].shape[0]/1000,raw._data[0,:-1].shape[0])
     RMS = np.zeros((6,raw._data[0,:].shape[0]))
     peak_time={}
     for ii, names in enumerate(channelList):
-            
+
         peak_time[names]=[]
         dataSegment,temptime = raw[ii,:raw.last_samp]
         peak_time[names],RMS[ii,:],time=RMS_calculation([temptime[0],temptime[-1]],dataSegment,mul)
-        
+
     peak_time['mean']=[]
     RMS_mean=hmean(RMS)
     RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
@@ -695,13 +695,13 @@ def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,major
     result = result[result.Onset > 30]
     result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 60)]
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
-    
+
     return peak_time, result,spindles, match, mismatch
-    
+
 def TS_analysis(raw,epch,picks,l_freq=8,h_freq=12):
     psd_,f=psd_multitaper(raw,tmin=epch[0],tmax=epch[1],fmin=l_freq,fmax=h_freq,picks=picks,n_jobs=-1)
     return psd_,f
-    
+
 def make_overlap_windows(raw,epoch_length=10):
     candidates = np.arange(raw.first_samp/1000, raw.last_samp/1000,epoch_length/2)
     epochs=[]
@@ -712,42 +712,42 @@ def make_overlap_windows(raw,epoch_length=10):
         else:
             epochs.append([item,candidates[ii+2]])
     return np.array(epochs)
-    
+
 
 def update_progress(progress,total):
     print('\r{0:.3f}%'.format(progress/total),end="",flush=True)
 def epoch_activity(raw,picks,epoch_length=10):
-    
+    # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
-    
+     # preallocate
     alpha_C=[];DT_C=[];ASI=[];activity=[];ave_activity=[];slow_spindle=[];fast_spindle=[]
     psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[]
-    
+
     print('calculating power spectral density')
     for ii,epch in enumerate(epochs):
-        
+        # monitor the progress (urgly useless)
         update_progress(ii,len(epochs))
         psds,f = TS_analysis(raw,epch,picks,0,40)
         psds = psds[0]
-        psds = 10*np.log10(psds)
-        temp_psd_delta1 = psds[np.where((f<=2))]
-        temp_psd_delta2 = psds[np.where(((f>=2) & (f<=4)))]
-        temp_psd_theta  = psds[np.where(((f>=4) & (f<=8)))]
-        temp_psd_alpha  = psds[np.where(((f>=8) & (f<=12)))]
-        temp_psd_beta   = psds[np.where(((f>=12) & (f<=20)))]
-        temp_psd_gamma  = psds[np.where((f>=20))]
-        temp_slow_spindle = psds[np.where((f>=9) & (f<=12))]
-        temp_fast_spindle = psds[np.where((f>=12) & (f<=15))]
-        
+        psds = 10*np.log10(psds)#rescale
+        temp_psd_delta1 = psds[np.where((f<=2))]# delta 1 band
+        temp_psd_delta2 = psds[np.where(((f>=2) & (f<=4)))]# delta 2 band
+        temp_psd_theta  = psds[np.where(((f>=4) & (f<=8)))]# theta band
+        temp_psd_alpha  = psds[np.where(((f>=8) & (f<=12)))]# alpha band
+        temp_psd_beta   = psds[np.where(((f>=12) & (f<=20)))]# beta band
+        temp_psd_gamma  = psds[np.where((f>=20))] # gamma band
+        temp_slow_spindle = psds[np.where((f>=10) & (f<=12))]# slow spindle
+        temp_fast_spindle = psds[np.where((f>=12.5) & (f<=14.5))]# fast spindle
+
         temp_activity = [temp_psd_delta1.mean(),
                          temp_psd_delta2.mean(),
                          temp_psd_theta.mean(),
-                         temp_psd_alpha.mean(), 
+                         temp_psd_alpha.mean(),
                          temp_psd_beta.mean(),
                          temp_psd_gamma.mean()]
-    
+
         temp_ASI = temp_psd_alpha.mean() /( temp_psd_delta2.mean() + temp_psd_theta.mean())
-    
+
         alpha_C.append(temp_psd_alpha.mean())
         DT_C.append(temp_psd_delta2.mean() + temp_psd_theta.mean())
         ASI.append(temp_ASI)
@@ -758,14 +758,14 @@ def epoch_activity(raw,picks,epoch_length=10):
         psd_delta1.append(temp_psd_delta1);psd_delta2.append(temp_psd_delta2)
         psd_theta.append(temp_psd_theta);psd_alpha.append(temp_psd_alpha)
         psd_beta.append(temp_psd_beta);psd_gamma.append(temp_psd_gamma)
-    slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12.2) & (f<=14.7))]
+    slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12.5) & (f<=14.5))]
     return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range
-    
+
 def mean_without_outlier(data):
     outlier_threshold = data.mean() + data.std()*3
     temp_data = data[np.logical_and(-outlier_threshold < data, data < outlier_threshold)]
     return temp_data.mean()
-    
+
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2):
     mul=threshold
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -776,13 +776,13 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     ax1=plt.subplot(312,sharex=ax)
     ax2=plt.subplot(313,sharex=ax)
     for ii, names in enumerate(channelList):
-            
+
         peak_time[names]=[]
         segment = raw._data[ii,:]
         RMS[ii,:] = window_rms(segment,moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * RMS[ii,:].std() # higher sd = more strict criteria
         pass_= RMS[ii,:] > mph
-            
+
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
         if (up[0].shape > down[0].shape) or (up[0].shape < down[0].shape):
@@ -806,7 +806,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         ax1.set(xlabel='time',ylabel='Amplitude')
         ax.axhline(mph,color='r',alpha=0.03)
         ax2.legend();ax.legend()
-    
+
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
@@ -832,8 +832,8 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
             duration.append(duration_temp)
     ax1.axhline(mph,color='r',alpha=1.)
     ax1.set_xlim([time[0],time[-1]])
-        
-        
+
+
     time_find=[];mean_peak_power=[];Duration=[]
     for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
         temp_timePoint=[]
