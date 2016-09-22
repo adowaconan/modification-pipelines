@@ -719,7 +719,7 @@ def update_progress(progress,total):
 def epoch_activity(raw,picks,epoch_length=10):
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
-    epochs = np.unique(epochs)
+    
      # preallocate
     alpha_C=[];DT_C=[];ASI=[];activity=[];ave_activity=[];slow_spindle=[];fast_spindle=[]
     psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[]
@@ -856,3 +856,13 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         except:
             pass
     return time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at
+def recode_annotation(x):
+    if re.compile(': w',re.IGNORECASE).search(x):
+        return 0
+    if re.compile('1',re.IGNORECASE).search(x):
+        return 1
+    if re.compile('2',re.IGNORECASE).search(x):
+        return 2
+    else:
+        print('error')
+        pass
