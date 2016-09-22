@@ -719,6 +719,7 @@ def update_progress(progress,total):
 def epoch_activity(raw,picks,epoch_length=10):
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
+    epochs = np.unique(epochs)
      # preallocate
     alpha_C=[];DT_C=[];ASI=[];activity=[];ave_activity=[];slow_spindle=[];fast_spindle=[]
     psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[]
@@ -759,13 +760,18 @@ def epoch_activity(raw,picks,epoch_length=10):
         psd_theta.append(temp_psd_theta);psd_alpha.append(temp_psd_alpha)
         psd_beta.append(temp_psd_beta);psd_gamma.append(temp_psd_gamma)
     slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12.5) & (f<=14.5))]
-    return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range
+    return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs
 
 def mean_without_outlier(data):
     outlier_threshold = data.mean() + data.std()*3
     temp_data = data[np.logical_and(-outlier_threshold < data, data < outlier_threshold)]
     return temp_data.mean()
-
+def trimmed_std(data,percentile):
+    data.sort()
+    percentile = percentile / 2
+    low = int(percentile * len(data))
+    high = int((1. - percentile) * len(data))
+    return data[low:high].std(ddof=0)
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2):
     mul=threshold
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -780,7 +786,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         peak_time[names]=[]
         segment = raw._data[ii,:]
         RMS[ii,:] = window_rms(segment,moving_window_size) # window of 200ms
-        mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * RMS[ii,:].std() # higher sd = more strict criteria
+        mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         pass_= RMS[ii,:] > mph
 
         up = np.where(np.diff(pass_.astype(int))>0)

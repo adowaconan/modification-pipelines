@@ -37,8 +37,7 @@ for idx in subjectList: # manually change the range, the second number is the po
     for file_to_read in list_file_to_read:    
         raw=mne.io.read_raw_fif(file_to_read[:-5]+'.fif',preload=True,add_eeg_ref=False)
         epoch_length=10 #10sec
-        epochs = eegPinelineDesign.make_overlap_windows(raw,epoch_length)
-        epochs = np.unique(epochs)
+    
         if idx == 26:
             channelList=['O1']
         else:
@@ -46,14 +45,14 @@ for idx in subjectList: # manually change the range, the second number is the po
         raw.pick_channels(channelList)
         picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False,stim=False)
         result={}
-        alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range = eegPinelineDesign.epoch_activity(raw,picks=picks)
+        alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs = eegPinelineDesign.epoch_activity(raw,picks=picks)
         activity = np.array(activity)
         ave_activity=np.array(ave_activity)
         alpha_C=np.array(alpha_C)
         DT_C=np.array(DT_C)
         ASI = np.array(ASI)
         power_slow_spindle = np.array(slow_spindle)
-        My_ASI = (np.log2(rescale(np.array(psd_alpha).mean(1))) + np.log2(rescale(np.array(psd_beta).mean(1)))) / np.log2(rescale(power_slow_spindle.mean(1)))
+        My_ASI = My_ASI = (rescale(np.array(psd_alpha).mean(1)) + rescale(np.array(psd_beta).mean(1))) / rescale(power_slow_spindle.mean(1))
         
         result['alpha activity']=alpha_C;result['sum of delta and theta']=DT_C
         result['activity across 6 bands']=activity;result['delta 0-2']=psd_delta1
