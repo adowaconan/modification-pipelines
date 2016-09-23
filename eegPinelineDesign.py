@@ -860,10 +860,14 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
 def recode_annotation(x):
     if re.compile(': w',re.IGNORECASE).search(x):
         return 0
-    if re.compile('1',re.IGNORECASE).search(x):
+    elif re.compile(':w',re.IGNORECASE).search(x):
+        return 0
+    elif re.compile('1',re.IGNORECASE).search(x):
         return 1
-    if re.compile('2',re.IGNORECASE).search(x):
+    elif re.compile('2',re.IGNORECASE).search(x):
         return 2
+    elif re.compile('SWS',re.IGNORECASE).search(x):
+        return 3
     else:
         print('error')
         pass
