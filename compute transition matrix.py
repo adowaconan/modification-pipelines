@@ -37,24 +37,29 @@ for name in results.keys():
     state = state.T.reshape((3*len(a)))
     state = state[:-1]
     Nstate=len(np.unique(temp['annotation'].values))
+    if Nstate == 4:
+        yticklabels=['SWS','2','1','w']
+    else:
+        yticklabels=['2','1','w']
     tranMat = np.zeros((Nstate,Nstate))
     for (x,y), c in Counter(zip(a, a[1:])).items():
-        tranMat[x-1][y-1] = c
-    tranMat = tranMat / tranMat.sum(1)
+        tranMat[x][y] = c
+    tranMat = tranMat / tranMat.sum(axis=1, keepdims=True)
     print('transisition matrix\n\n',name,'\n\n', tranMat)
     ax1=fig.add_subplot(2,5,cnt)
-    ax1.pcolor(tranMat,cmap=plt.cm.Blues)
+    ax1.pcolor(np.flipud(tranMat),cmap=plt.cm.Blues)
     ax1.xaxis.tick_top()
     ax1.set(xticks=np.arange(Nstate)+0.5,yticks=np.arange(Nstate)+0.5,
-            xticklabels=['w','1','2','SWS'],yticklabels=['w','1','2','SWS'])
+            xticklabels=['w','1','2','SWS'],yticklabels=yticklabels)
     plt.title(name,y=1.08)
-    for y in range(tranMat.shape[0]):
-        for x in range(tranMat.shape[1]):
-            ax1.annotate('%.4f'%tranMat[y,x],xy=(x+0.3,y+0.5))
+    for x in range(tranMat.shape[0]):
+        for y in range(tranMat.shape[1]):
+            print(np.flipud(tranMat)[x,y])
+            ax1.annotate('%.4f'%np.fliplr(tranMat.T)[x,y],xy=(x+0.3,y+0.5))
     if cnt == 1:
         ax1.set(xlabel='stage',ylabel='stage')
     
-    Ncat=4
+    Ncat=6
     Obs = results[name]['result']['my ASI']
     Obs = pd.DataFrame({'Obs':pd.cut(Obs,Ncat,labels=False)})
     #ax=Obs.plot(style='.-',yticks=np.arange(Ncat))
@@ -68,10 +73,10 @@ for name in results.keys():
     ax2.pcolor(EmissionMat,cmap=plt.cm.Blues)
     ax2.xaxis.tick_top()
     ax2.set(yticks=np.arange(Nstate)+0.5,xticks=np.arange(Ncat)+0.5,
-            yticklabels=['w','1','2','SWS'],xticklabels=np.arange(Ncat)+1)
-    for y in range(EmissionMat.shape[0]):
-        for x in range(EmissionMat.shape[1]):
-            ax2.annotate('%.4f'%EmissionMat[y,x],xy=(x+0.3,y+0.5))
+            yticklabels=yticklabels,xticklabels=np.arange(Ncat)+1)
+    for x in range(EmissionMat.shape[0]):
+        for y in range(EmissionMat.shape[1]):
+            ax2.annotate('%.4f'%EmissionMat[x,y],xy=(y+0.1,x+0.5))
     if cnt == 1:
         ax2.set(xlabel='observation',ylabel='stage')
     cnt +=1
