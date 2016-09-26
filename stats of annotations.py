@@ -10,11 +10,12 @@ import pandas as pd
 import numpy as np
 import mne
 import re
-#import pickle
+import pickle
 def rescale(M):
     M = np.array(M)
     return (M - M.min())/(M.max() - M.min())+2
 results={}
+
 sublist=[13,28,29]
 for sub in sublist:
     current_working_folder=eegPinelineDesign.change_file_directory('D:\\NING - spindle\\suj%d'%(sub))
@@ -58,5 +59,8 @@ for sub in sublist:
         result['slow']=np.array(slow_spindle)
         result['fast']=np.array(fast_spindle)
         result['my ASI']=np.array(My_ASI)
+        result['epochs']=np.unique(epochs)
         #pickle.dump( result, open( 'suj13_l2nap_day2_fast_spindle.p', "wb" ) )
-        results[sub]={'annotation':annotation,'result':result}
+        results[file_to_read[:-16]]={'annotation':annotation,'result':result}
+
+pickle.dump(results,open('sleep annotation.p','wb'))
