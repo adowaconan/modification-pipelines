@@ -179,24 +179,24 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             chan_list.append('ROc')
 
         raw.pick_channels(chan_list)
-            picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
-            raw.filter(None,c,l_trans_bandwidth=0.01,
-                       h_trans_bandwidth='auto',filter_length=30,picks=picks)
-            noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
-            raw.notch_filter(np.arange(60,241,60), picks=picks)
-            reject = dict(eeg=eegReject,eog=eogReject)
-        
-            ica = mne.preprocessing.ICA(n_components=0.9,n_pca_components =.9,
-                                        max_iter=30,method='extended-infomax',
-                                        noise_cov=noise_cov, random_state=0)
-            ica.fit(raw,picks=picks,start=0,decim=2,reject=reject,tstep=2.)
-            ica.detect_artifacts(raw,eog_ch=['LOc','ROc'],
-                                 eog_criterion=0.4,skew_criterion=2,kurt_criterion=2,var_criterion=2)
-            try:                     
-                a,b=ica.find_bads_eog(raw)
-                ica.exclude += a
-            except:
-                pass
+        picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
+        raw.filter(None,c,l_trans_bandwidth=0.01,
+                   h_trans_bandwidth='auto',filter_length=30,picks=picks)
+        noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
+        raw.notch_filter(np.arange(60,241,60), picks=picks)
+        reject = dict(eeg=eegReject,eog=eogReject)
+    
+        ica = mne.preprocessing.ICA(n_components=0.9,n_pca_components =.9,
+                                    max_iter=30,method='extended-infomax',
+                                    noise_cov=noise_cov, random_state=0)
+        ica.fit(raw,picks=picks,start=0,decim=2,reject=reject,tstep=2.)
+        ica.detect_artifacts(raw,eog_ch=['LOc','ROc'],
+                             eog_criterion=0.4,skew_criterion=2,kurt_criterion=2,var_criterion=2)
+        try:                     
+            a,b=ica.find_bads_eog(raw)
+            ica.exclude += a
+        except:
+            pass
 
 
     clean_raw = ica.apply(raw,exclude=ica.exclude)
