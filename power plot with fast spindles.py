@@ -24,7 +24,9 @@ def read_pickle(fileName):
     return result
 def rescale(M):
     M = np.array(M)
-    return (M - M.min())/(M.max() - M.min())+2
+    return (M - M.min())/(M.max() - M.min()) + 1
+def PSDW(a,b,c):
+    return ((a+b)/c)
 folderList = eegPinelineDesign.change_file_directory('D:\\NING - spindle')
 subjectList = np.concatenate((np.arange(11,24),np.arange(25,31),np.arange(32,33)))
 #subjectList = np.concatenate((np.arange(11,12))
@@ -46,13 +48,14 @@ for idx in subjectList: # manually change the range, the second number is the po
         picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False,stim=False)
         result={}
         alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs = eegPinelineDesign.epoch_activity(raw,picks=picks)
+        epochs=np.unique(epochs)        
         activity = np.array(activity)
         ave_activity=np.array(ave_activity)
         alpha_C=np.array(alpha_C)
         DT_C=np.array(DT_C)
         ASI = np.array(ASI)
         power_fast_spindle = np.array(fast_spindle)
-        My_ASI = (rescale(np.array(psd_alpha).mean(1)) + rescale(np.array(psd_beta).mean(1))) / rescale(power_fast_spindle.mean(1))
+        My_ASI = PSDW(rescale(np.array(psd_alpha).mean(1)),rescale(np.array(psd_beta).mean(1)) ,rescale(power_fast_spindle.mean(1)))
         
         result['alpha activity']=alpha_C;result['sum of delta and theta']=DT_C
         result['activity across 6 bands']=activity;result['delta 0-2']=psd_delta1

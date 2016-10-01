@@ -13,9 +13,10 @@ import re
 import pickle
 def rescale(M):
     M = np.array(M)
-    return (M - M.min())/(M.max() - M.min())+2
+    return (M - M.min())/(M.max() - M.min())+1
 results={}
-
+def PSDW(a,b,c):
+    return ((a+b)/c)
 sublist=[13,28,29]
 for sub in sublist:
     current_working_folder=eegPinelineDesign.change_file_directory('D:\\NING - spindle\\suj%d'%(sub))
@@ -48,7 +49,7 @@ for sub in sublist:
         DT_C=np.array(DT_C)
         ASI = np.array(ASI)
         power_fast_spindle = np.array(fast_spindle)
-        My_ASI = (np.log2(rescale(np.array(psd_alpha).mean(1))) + np.log2(rescale(np.array(psd_beta).mean(1)))) / np.log2(rescale(power_fast_spindle.mean(1)))
+        My_ASI = PSDW(rescale(np.array(psd_alpha).mean(1)),rescale(np.array(psd_beta).mean(1)) ,rescale(power_fast_spindle.mean(1)))
         result['alpha activity']=alpha_C;result['sum of delta and theta']=DT_C
         result['activity across 6 bands']=activity;result['delta 0-2']=psd_delta1
         result['delta 2-4']=psd_delta2;result['theta']=psd_theta;result['alpha']=psd_alpha
@@ -62,5 +63,5 @@ for sub in sublist:
         result['epochs']=np.unique(epochs)
         #pickle.dump( result, open( 'suj13_l2nap_day2_fast_spindle.p', "wb" ) )
         results[file_to_read[:-16]]={'annotation':annotation,'result':result}
-
+        
 pickle.dump(results,open('sleep annotation.p','wb'))
