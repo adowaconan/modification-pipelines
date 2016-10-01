@@ -43,7 +43,7 @@ for name in results.keys():
         yticklabels=['2','1','w']
     tranMat = np.zeros((Nstate,Nstate))
     for (x,y), c in Counter(zip(a, a[1:])).items():
-        tranMat[x][y] = c
+        tranMat[x-1][y-1] = c
     tranMat = tranMat / tranMat.sum(axis=1, keepdims=True)
     print('transisition matrix\n\n',name,'\n\n', tranMat)
     ax1=fig.add_subplot(2,5,cnt)
@@ -54,14 +54,18 @@ for name in results.keys():
     plt.title(name,y=1.08)
     for x in range(tranMat.shape[0]):
         for y in range(tranMat.shape[1]):
-            print(np.flipud(tranMat)[x,y])
+            #print(np.flipud(tranMat)[x,y])
             ax1.annotate('%.4f'%np.fliplr(tranMat.T)[x,y],xy=(x+0.3,y+0.5))
     if cnt == 1:
         ax1.set(xlabel='stage',ylabel='stage')
     
-    Ncat=6
+    Ncat=5
+    global_=pd.read_csv('global ASI.csv')
+    _,bins=pd.cut(global_['global ASI'],Ncat,labels=False,retbins=True)
     Obs = results[name]['result']['my ASI']
-    Obs = pd.DataFrame({'Obs':pd.cut(Obs,Ncat,labels=False)})
+    Obs = pd.DataFrame({'Obs':pd.cut(Obs,bins,labels=False)})
+    max_=Obs['Obs'].max()
+    #Obs['Obs']=Obs['Obs'].apply(lambda x:  max_-x)
     #ax=Obs.plot(style='.-',yticks=np.arange(Ncat))
     #_=ax.set(title=name,yticklabels=np.arange(Ncat)+1)
     EmissionMat = np.zeros((Nstate,Ncat))
@@ -80,4 +84,25 @@ for name in results.keys():
     if cnt == 1:
         ax2.set(xlabel='observation',ylabel='stage')
     cnt +=1
-fig.savefig('transition matrix and emission matrix.png')
+#fig.savefig('transition matrix and emission matrix.png')
+    
+    from hmmlearn import hmm
+    seq = np.vstack([Obs['Obs'].values[:state.shape[0]],state])
+    seq = seq.T
+    model = hmm.GaussianHMM(n_components=tranMat.shape[0],random_state=0,n_iter=100,tol=1e-5,covariance_type='diag',
+                            params='tmc',init_params='st')
+    model.transmat_=tranMat
+    #model.startprob_prior=np.concatenate(([1],np.zeros(tranMat.shape[0]-1)))
+    model.startprob_=np.concatenate(([1],np.zeros(tranMat.shape[0]-1)))
+    model.fit(seq)
+    model.predict(seq)
+    print(model.decode(seq)[1],seq[:,1],1- np.nonzero(model.decode(seq)[1] - seq[:,1])[0].shape[0]/len(seq),1/tranMat.shape[0])
+    #print(model.decode(seq))
+    
+#from sklearn.cross_validation import train_test_split
+#from sklearn.linear_model import LinearRegression
+#t=results[name]['result']['my ASI'][:state.shape[0]];
+#X = np.vstack([np.ones(t.shape),t,np.sin(2*np.pi*np.arange(len(t))*1000),np.cos(2*np.pi*np.arange(len(t))*1000)])
+#Xtrain,Xtest,Ytrain,Ytest=train_test_split(X.T,t)
+#clf = LinearRegression();clf.fit(Xtrain,Ytrain)
+#plt.figure();plt.plot(Ytest);plt.plot(clf.predict(Xtest))
