@@ -79,41 +79,60 @@ chan_dict={'Ch56': 'TP8', 'Ch61': 'F6', 'Ch3': 'F3', 'Ch45': 'P1', 'Ch14': 'P3',
            'Ch16': 'O1', 'Ch52': 'P6', 'Ch5': 'FT9', 'Ch42': 'C5', 'Ch36': 'F1', 
            'Ch26': 'T8', 'Ch51': 'PO8', 'Ch34': 'AF3', 'Ch22': 'CP6', 'Ch54': 'CPz', 
            'Ch13': 'Pz', 'Ch63': 'LOc', 'Ch43': 'TP7'}
-def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogReject=300,n_ch=32,chan_dict=chan_dict):
+def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
+              eogReject=180,n_ch=-2):
     """ not just load the data, but also remove artifact by using mne.ICA
         Make sure 'LOC' or 'ROC' channels are in the channel list, because they
         are used to detect muscle and eye blink movements"""
+        
+        
+    """
+    file_to_read: file name with 'vhdr'
+    low_frequency: high pass cutoff point
+    high_frequency: low pass cutoff point
+    eegReject: change in amplitude in microvoltage of eeg channels
+    eogReject: change in amplitude in microvoltage of eog channels
+    n_ch: index of channel list, use '-2' for excluding AUX and stimuli channels
+    """
     c=200
-    try:
-        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
-        #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
-        chan_list=raw.ch_names[:n_ch]
-        if 'LOc' not in chan_list:
-            chan_list.append('LOc')
-        if 'ROc' not in chan_list:
-            chan_list.append('ROc')
-        
-        raw.pick_channels(chan_list)
-        raw.filter(1,c)
-        picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
-        noise_cov=mne.compute_raw_covariance(raw.add_eeg_average_proj(),picks=picks)
-        raw.notch_filter(np.arange(60,241,60), picks=picks)
-        reject = dict(eeg=eegReject)
-
-        ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-                  noise_cov=noise_cov, random_state=0)
-        ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
-        ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
-                             skew_criterion=2,kurt_criterion=2,var_criterion=2)
-        raw.set_channel_types({'LOc':'eog','ROc':'eog'})
-        a,b=ica.find_bads_eog(raw)
-        ica.exclude += a
-        
-    except:
+    raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
+    if 'LOc' in raw.ch_names:
         try:
+            raw.resample(500,npad='auto')
+            #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
+            raw.set_channel_types({'LOc':'eog','ROc':'eog'})
+            chan_list=raw.ch_names[:n_ch]#exclude AUX and stim channel
+            if 'LOc' not in chan_list:
+                chan_list.append('LOc')
+            if 'ROc' not in chan_list:
+                chan_list.append('ROc')
+        
+            raw.pick_channels(chan_list)
+            picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
+            raw.filter(None,c,l_trans_bandwidth=0.01,
+                       h_trans_bandwidth='auto',filter_length=30,picks=picks)
+            noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
+            raw.notch_filter(np.arange(60,241,60), picks=picks)
+            reject = dict(eeg=eegReject,eog=eogReject)
+        
+            ica = mne.preprocessing.ICA(n_components=0.9,n_pca_components =.9,
+                                        max_iter=30,method='extended-infomax',
+                                        noise_cov=noise_cov, random_state=0)
+            ica.fit(raw,picks=picks,start=0,stop=raw.last_samp,decim=2,reject=reject,tstep=2.)
+            ica.detect_artifacts(raw,eog_ch=['LOc','ROc'],
+                                 eog_criterion=0.4,skew_criterion=2,kurt_criterion=2,var_criterion=2)
+            try:                     
+                a,b=ica.find_bads_eog(raw)
+                ica.exclude += a
+            except:
+                pass
+        except:
+        
             print('alternative')
+            pass
             raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
-            #noise_cov=mne.compute_raw_covariance(raw.add_eeg_average_proj(),picks=picks)
+            
+            #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']            
             chan_list=raw.ch_names[:n_ch]
             if 'LOc' not in chan_list:
                 chan_list.append('LOc')
@@ -124,6 +143,7 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
     
             raw.set_channel_types({'LOc':'eog','ROc':'eog'})
             picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=True,stim=False)
+            noise_cov=mne.compute_raw_covariance(raw.add_eeg_average_proj(),picks=picks)
             raw.notch_filter(np.arange(60,241,60), picks=picks)
             reject = dict(eeg=eegReject,
                       eog=eogReject)
@@ -140,38 +160,43 @@ def load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=260,eogRe
             raw.info['projs'] += raw_proj
             raw.apply_proj()
             ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-                      noise_cov=None, random_state=0)
+                      noise_cov=noise_cov, random_state=0)
             ica.fit(raw,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
             ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
-                                 skew_criterion=2,kurt_criterion=2,var_criterion=2)
+                                 skew_criterion=1,kurt_criterion=1,var_criterion=1)
+            
             a,b=ica.find_bads_eog(raw)
             ica.exclude += a
-        except:
-            print('no channel names')
-            raw = mne.io.read_raw_brainvision(file_to_read,scale=1e4,preload=True)
-            
-            raw.rename_channels(chan_dict)
-            chan_list=raw.ch_names[:n_ch]
-            if 'LOc' not in chan_list:
-                chan_list.append('LOc')
-            if 'ROc' not in chan_list:
-                chan_list.append('ROc')
-    
-            raw.pick_channels(chan_list)
-            raw.filter(1,c)
+    else:
+        print('no channel names')
+        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e4,preload=True)
+        
+        raw.rename_channels(chan_dict)
+        chan_list=raw.ch_names[:n_ch]
+        if 'LOc' not in chan_list:
+            chan_list.append('LOc')
+        if 'ROc' not in chan_list:
+            chan_list.append('ROc')
+
+        raw.pick_channels(chan_list)
             picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
-            noise_cov=mne.compute_raw_covariance(raw.add_eeg_average_proj(),picks=picks)
+            raw.filter(None,c,l_trans_bandwidth=0.01,
+                       h_trans_bandwidth='auto',filter_length=30,picks=picks)
+            noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
             raw.notch_filter(np.arange(60,241,60), picks=picks)
-            reject = dict(eeg=eegReject)
-            
-            ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-                      noise_cov=noise_cov, random_state=0)
-            ica.fit(raw,picks=picks,decim=2,tstep=2.)
-            ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
-                                 skew_criterion=2,kurt_criterion=2,var_criterion=2)
-            raw.set_channel_types({'LOc':'eog','ROc':'eog'})
-            a,b=ica.find_bads_eog(raw)
-            ica.exclude += a
+            reject = dict(eeg=eegReject,eog=eogReject)
+        
+            ica = mne.preprocessing.ICA(n_components=0.9,n_pca_components =.9,
+                                        max_iter=30,method='extended-infomax',
+                                        noise_cov=noise_cov, random_state=0)
+            ica.fit(raw,picks=picks,start=0,decim=2,reject=reject,tstep=2.)
+            ica.detect_artifacts(raw,eog_ch=['LOc','ROc'],
+                                 eog_criterion=0.4,skew_criterion=2,kurt_criterion=2,var_criterion=2)
+            try:                     
+                a,b=ica.find_bads_eog(raw)
+                ica.exclude += a
+            except:
+                pass
 
 
     clean_raw = ica.apply(raw,exclude=ica.exclude)
@@ -808,11 +833,12 @@ def mean_without_outlier(data):
     temp_data = data[np.logical_and(-outlier_threshold < data, data < outlier_threshold)]
     return temp_data.mean()
 def trimmed_std(data,percentile):
-    data.sort()
+    temp=data.copy()
+    temp.sort()
     percentile = percentile / 2
-    low = int(percentile * len(data))
-    high = int((1. - percentile) * len(data))
-    return data[low:high].std(ddof=0)
+    low = int(percentile * len(temp))
+    high = int((1. - percentile) * len(temp))
+    return temp[low:high].std(ddof=0)
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2):
     mul=threshold
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -832,10 +858,17 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
 
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
-        if (up[0].shape > down[0].shape) or (up[0].shape < down[0].shape):
-            size = np.min([up[0].shape,down[0].shape])
-            up = up[0][:size]
-            down = down[0][:size]
+        up = up[0]
+        down = down[0]
+        ###############################
+        if down[0] < up[0]:
+            down = down[1:]
+        
+        #############################
+        if (up.shape > down.shape) or (up.shape < down.shape):
+            size = np.min([up.shape,down.shape])
+            up = up[:size]
+            down = down[:size]
         C = np.vstack((up,down))
         for pairs in C.T:
             if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
@@ -900,10 +933,16 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
 def recode_annotation(x):
     if re.compile(': w',re.IGNORECASE).search(x):
         return 0
-    if re.compile('1',re.IGNORECASE).search(x):
+    elif re.compile(':w',re.IGNORECASE).search(x):
+        return 0
+    elif re.compile('1',re.IGNORECASE).search(x):
         return 1
-    if re.compile('2',re.IGNORECASE).search(x):
+    elif re.compile('2',re.IGNORECASE).search(x):
         return 2
+    elif re.compile('SWS',re.IGNORECASE).search(x):
+        return 3
+    elif re.compile('3',re.IGNORECASE).search(x):
+        return 3
     else:
         print('error')
         pass
