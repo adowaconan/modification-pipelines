@@ -27,8 +27,7 @@ def rescale(M):
     return (M - M.min())/(M.max() - M.min())+2
 folderList = eegPinelineDesign.change_file_directory('D:\\NING - spindle')
 subjectList = np.concatenate((np.arange(11,24),np.arange(25,31),np.arange(32,33)))
-#subjectList = np.concatenate((np.arange(11,12))
-#for idx in subjectList:
+
 for idx in subjectList: # manually change the range, the second number is the position after the last stop
     
     folder_ = [folder_to_look for folder_to_look in folderList if (str(idx) in folder_to_look) and ('suj' in folder_to_look)]
@@ -129,14 +128,15 @@ for idx in subjectList: # manually change the range, the second number is the po
         except:
             pass
         #fig 7 3rd in middle
-        ax7.plot(epochs[1:-1],np.array(psd_beta).mean(1),'r',alpha=.4,label='beta')
-        ax7.plot(epochs[1:-1],np.array(psd_alpha).mean(1),'b',alpha=.4,label='alpha');
+        change_ASI = np.diff(My_ASI)
+        ax7.plot(epochs[1:-2],change_ASI,'r',alpha=.4,label='change in ASI',color='black')
+        
         try:
-            ax7.scatter(spindles['Onset'],np.mean(psd_beta)*np.ones(len(spindles)))
+            ax7.scatter(spindles['Onset'],np.mean(change_ASI)*np.ones(len(spindles)))
         except:
             pass
         
-        ax7.set(title='mixed',xlim=[raw.first_samp/1000,raw.last_samp/1000],ylabel='power')
+        ax7.set(title='Change in ASI',xlim=[raw.first_samp/1000,raw.last_samp/1000],ylabel='change')
         ax7.legend();
         #fig 8 last two
         ax8_im.imshow(np.flipud(ave_activity.T),cmap=plt.cm.Blues,aspect='auto');
@@ -167,4 +167,5 @@ for idx in subjectList: # manually change the range, the second number is the po
         plt.tight_layout()
         fileName = file_to_read[:-5] + '.csv'
         pic_fileName = fileName[:-4] + '_slow_spindle.png'
-        plt.savefig(pic_fileName)
+        fig.savefig(pic_fileName)
+        plt.close(fig)

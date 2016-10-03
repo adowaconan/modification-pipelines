@@ -39,12 +39,18 @@ for idx in subjectList: # manually change the range, the second number is the po
                     except:
                         raw = eegPinelineDesign.load_data(file_to_read,low_frequency=1,high_frequency=50,eegReject=360,eogReject=300,n_ch=64)
             raw.save(file_to_read[:-5] + '.fif',overwrite=True)
-        raw.filter(12.5,14.5)
+        l_freq=10;h_freq=12
         raw.filter(10,12)
         channelList = ['F3','F4','C3','C4','O1','O2']
         raw.pick_channels(channelList)
-        time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at = eegPinelineDesign.get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=10,h_freq=12)
-        
+        threshold=0.9;moving_window_size=200;l_bound=0.5;h_bound=2;syn_channels=4
+        mul=threshold
+        time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at = eegPinelineDesign.get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,
+                                                                                                                                         moving_window_size=moving_window_size,
+                                                                                                                                         threshold=threshold,
+                                                                                                                                         syn_channels=syn_channels,
+                                                                                                                                         l_freq=l_freq,
+                                                                                                                                         h_freq=h_freq)
         result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
         result['Annotation'] = 'auto spindle'
         result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
@@ -54,4 +60,5 @@ for idx in subjectList: # manually change the range, the second number is the po
         fileName = file_to_read[:-5] + '_slow_spindle.csv'
         result.to_csv(fileName,spe=',',encoding='utf-8',index=False)
         pic_fileName = fileName[:-4] + 'slow_spindle.png'
-        plt.savefig(pic_fileName)
+        fig.savefig(pic_fileName)
+        plt.close(fig)

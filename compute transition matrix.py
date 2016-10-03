@@ -11,6 +11,8 @@ import pickle
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
+from hmmlearn import hmm
+from sklearn.cross_validation import train_test_split
 global_ASI=pd.read_csv('global ASI.csv',index_col=False)
 global_ASI=global_ASI['global ASI'].values
 #idxx = int(len(global_ASI)*0.001)
@@ -58,14 +60,14 @@ for name in results.keys():
     plt.title(name,y=1.08)
     for x in range(tranMat.shape[0]):
         for y in range(tranMat.shape[1]):
-            print(np.flipud(tranMat)[x,y])
+            #print(np.flipud(tranMat)[x,y])
             ax1.annotate('%.4f'%np.fliplr(tranMat.T)[x,y],xy=(x+0.3,y+0.5))
     
     ax1.set(xlabel='stage',ylabel='stage')
     
     
     Obs = results[name]['result']['my ASI']
-    Obs = pd.DataFrame({'Obs':pd.cut(Obs,bins=bins,labels=False)})
+    Obs = pd.DataFrame({'Obs':pd.cut(Obs,Ncat,labels=False)})
     result=results[name]['result']
     epochs=result['epochs']
     epochs=np.unique(epochs)
@@ -73,7 +75,7 @@ for name in results.keys():
     #_=ax.set(title=name,yticklabels=np.arange(Ncat)+1)
     EmissionMat = np.zeros((Nstate,Ncat))
     for (x,y),c in Counter(zip(state,Obs['Obs'].values)).items():
-        print(x,y,c)
+        #print(x,y,c)
         EmissionMat[x-1][y-1] = c
     EmissionMat = EmissionMat / EmissionMat.sum(axis=1, keepdims=True)
     print('emissin matrix\n\n',name,'\n\n',EmissionMat)
@@ -95,4 +97,12 @@ for name in results.keys():
     ax4=fig.add_subplot(312)
     ax4.plot(epochs[1:-1],Obs['Obs'].values)
     ax4.set(yticks=np.arange(Ncat),yticklabels=np.arange(Ncat))
+    
+    X = np.column_stack([Obs['Obs'].values[:len(state)],state])
+    Xtrain,Xtest = train_test_split(X)
+    model = hmm.GaussianHMM(n_components=4,covariance_type='diag',n_iter=1000).fit(Xtrain)
+    hidden_states = model.decode(Xtest)
+    score=hidden_states[1]-Xtest[:,1]
+    print('prediction is %.3f'%(len(score[score==0])/len(score)))
 #fig.savefig('transition matrix and emission matrix.png')
+    

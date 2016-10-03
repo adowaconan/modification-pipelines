@@ -161,8 +161,9 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
                 pass
             raw.info['projs'] += raw_proj
             raw.apply_proj()
-            ica = ICA(n_components=None, n_pca_components=None, max_pca_components=None,max_iter=3000,
-                      noise_cov=noise_cov, random_state=0)
+            ica = mne.preprocessing.ICA(n_components=0.95,n_pca_components =.95,
+                                        max_iter=3000,method='extended-infomax',
+                                        noise_cov=noise_cov, random_state=0)
             ica.fit(raw,start=0,stop=raw.last_samp,decim=3,reject=reject,tstep=2.)
             ica.detect_artifacts(raw,eog_ch=['LOc', 'ROc'],eog_criterion=0.4,
                                  skew_criterion=1,kurt_criterion=1,var_criterion=1)
@@ -810,7 +811,7 @@ def epoch_activity(raw,picks,epoch_length=10):
         temp_psd_beta   = psds[np.where(((f>=12) & (f<=20)))]# beta band
         temp_psd_gamma  = psds[np.where((f>=20))] # gamma band
         temp_slow_spindle = psds[np.where((f>=10) & (f<=12))]# slow spindle
-        temp_fast_spindle = psds[np.where((f>=12.5) & (f<=14.5))]# fast spindle
+        temp_fast_spindle = psds[np.where((f>=12) & (f<=14))]# fast spindle
 
         temp_activity = [temp_psd_delta1.mean(),
                          temp_psd_delta2.mean(),
@@ -831,7 +832,7 @@ def epoch_activity(raw,picks,epoch_length=10):
         psd_delta1.append(temp_psd_delta1);psd_delta2.append(temp_psd_delta2)
         psd_theta.append(temp_psd_theta);psd_alpha.append(temp_psd_alpha)
         psd_beta.append(temp_psd_beta);psd_gamma.append(temp_psd_gamma)
-    slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12.5) & (f<=14.5))]
+    slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12) & (f<=14))]
     return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs
 
 def mean_without_outlier(data):
@@ -850,7 +851,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
     peak_time={} #preallocate
-    fig=plt.figure(figsize=(20,20))
+    fig=plt.figure(figsize=(40,40))
     ax=plt.subplot(311)
     ax1=plt.subplot(312,sharex=ax)
     ax2=plt.subplot(313,sharex=ax)
@@ -868,9 +869,10 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         up = up[0]
         down = down[0]
         ###############################
+        #print(down[0],up[0])
         if down[0] < up[0]:
             down = down[1:]
-        
+        #print(down[0],up[0])
         #############################
         if (up.shape > down.shape) or (up.shape < down.shape):
             size = np.min([up.shape,down.shape])
@@ -903,12 +905,21 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     pass_ = RMS_mean > mph
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
-    if (up[0].shape > down[0].shape) or (up[0].shape < down[0].shape):
-        size = np.min([up[0].shape,down[0].shape])
-        up = up[0][:size]
-        down = down[0][:size]
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
     C = np.vstack((up,down))
     for pairs in C.T:
+        
         if 0.5 < (time[pairs[1]] - time[pairs[0]]) < 2:
             TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
             SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]

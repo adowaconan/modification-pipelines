@@ -7,7 +7,7 @@ Created on Thu Aug 18 17:01:24 2016
 
 import os
 
-os.system('python "Fast spindle detection.py"')
-os.system('python "Slow spindle detection.py"')
-#os.system('python "power plot with slow spindles.py"')
-#os.system('python "power plot with fast spindles.py"')
+#os.system('python "Fast spindle detection.py"')
+#os.system('python "Slow spindle detection.py"')
+os.system('python "power plot with fast spindles.py"')
+os.system('python "power plot with slow spindles.py"')
