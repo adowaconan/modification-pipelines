@@ -69,7 +69,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         epoch_length=10 #10sec
         channelList=['Cz']
         raw.pick_channels(channelList)
-        raw.filter(1,40)
+        raw.filter(0.1,40,l_trans_bandwidth=0.01,filter_length=30)
         picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False,stim=False)
         result={}
         alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs = eegPinelineDesign.epoch_activity(raw,picks=picks)
@@ -212,3 +212,4 @@ for idx in subjectList: # manually change the range, the second number is the po
         fileName = file_to_read[:-5] + '.csv'
         pic_fileName = fileName[:-4] + '_fast_spindle.png'
         fig.savefig(pic_fileName)
+        plt.close(fig)

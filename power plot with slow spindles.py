@@ -85,6 +85,7 @@ for idx in subjectList: # manually change the range, the second number is the po
         ax7 = plt.subplot(613);
         ax8_im = plt.subplot(615)
         ax9 = plt.subplot(614,sharex=ax7);ax99=ax9.twinx()
+        epochs=np.unique(epochs)
         # fig 1
         ax1.plot(epochs[1:-1],np.array(psd_alpha),alpha=0.1)
         ax1.plot(epochs[1:-1],np.array(psd_alpha).mean(1),alpha=1.,color='black',label='average alpha activity')
@@ -145,8 +146,8 @@ for idx in subjectList: # manually change the range, the second number is the po
         
         #fig 9 in middle,4th
         ax9.plot(epochs[1:-1],My_ASI,color='black',alpha=1.,label='ASI');ax9.set(title='alpha + beta / slow_spindle_activity',ylabel='ratio unit')
-        ax99.plot(epochs[1:-1],pd.qcut(np.array(My_ASI),4,labels=False),color='r',alpha=0.3,label='cate ASI')
-        ax99.set(yticks=[0,1,2,3],yticklabels=[1,2,3,4],ylim=[-0.1,3.1])
+        ax99.plot(epochs[1:-1],pd.qcut(np.array(My_ASI),2,labels=False),color='r',alpha=0.3,label='cate ASI')
+        ax99.set(yticks=[0,1],yticklabels=[1,2],ylim=[-0.1,3.1])
         try:
             ax9.scatter(spindles['Onset'],My_ASI.mean()*np.ones(len(spindles)))
         except:

@@ -133,7 +133,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             print('alternative')
             pass
             raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
-            
+            raw.resample(500)
             #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']            
             chan_list=raw.ch_names[:n_ch]
             if 'LOc' not in chan_list:
@@ -172,8 +172,9 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             ica.exclude += a
     else:
         print('no channel names')
-        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e4,preload=True)
         
+        raw = mne.io.read_raw_brainvision(file_to_read,scale=1e4,preload=True)
+        #raw.resample(500)
         raw.rename_channels(chan_dict)
         chan_list=raw.ch_names[:n_ch]
         if 'LOc' not in chan_list:
@@ -697,9 +698,13 @@ def validation(val_file,result,tol=1):
     return spindles, match, mismatch
 from scipy.stats import hmean,trim_mean
 def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,majority=3,mul=0.8):
+    raw = mne.io.read_raw_fif(file_to_read,preload=True,add_eeg_ref=False)
+    
+    raw.filter(lowCut,highCut,l_trans_bandwidth=0.1)
     channelList = ['F3','F4','C3','C4','O1','O2']
-    raw = load_data(file_to_read,lowCut,highCut,180)
     raw.pick_channels(channelList)
+    time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at=get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=mul,syn_channels=majority,l_freq=lowCut,h_freq=highCut,l_bound=0.5,h_bound=2)
+    
     print('finish loading data')
     file2 = pd.read_csv(validation_file,sep=',')
     labelFind = re.compile('Marker: Markon: 2',re.IGNORECASE)
@@ -710,33 +715,8 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
             stage2.append([row[1][0],row[1][0]+30])# time of marker
     stage2 = np.array(stage2)
     print('finish loading annotations')
-    peak_time={}
-    result=[]
-    for intervals in stage2:
-        print(intervals)
-        RMS = np.zeros((6,30*1e3))
-        peak_time[intervals[0]]={}
-        for ii, names in enumerate(channelList):
-
-            dataSegment,_=cut_segments(raw,np.mean(intervals),ii,windowsize=30/2)
-            peak_time[intervals[0]][names],RMS[ii,:],time=RMS_calculation(intervals,dataSegment,mul)
-
-        peak_time['mean']=[]
-        RMS_mean=hmean(RMS)
-        RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
-        #ax1.plot(time,RMS_mean,color='k',alpha=0.3)
-        mph = RMS_mean.mean() + mul * RMS_mean.std()
-        pass_ = RMS_mean > mph
-        peak_time[intervals[0]]['mean']=RMS_pass(pass_,time,RMS_mean)
-
-        print(peak_time[intervals[0]])
-
-
-        result.append(find_time(peak_time[intervals[0]],number=majority))
-    from itertools import chain
-    result = list(chain.from_iterable(result))
-    result = pd.DataFrame(result,columns=['center of spindles'])
-    result['comment']='spindle'
+    result = pd.DataFrame({'Onset':np.array(time_find),'Duration':Duration})
+    result['Annotation']='spindle'
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
 
     return peak_time, result,spindles, match, mismatch
@@ -846,8 +826,9 @@ def trimmed_std(data,percentile):
     low = int(percentile * len(temp))
     high = int((1. - percentile) * len(temp))
     return temp[low:high].std(ddof=0)
-def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2):
+def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
     mul=threshold;nn=4.5
+    
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
     peak_time={} #preallocate
@@ -944,8 +925,8 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
             except:
                 temp_timePoint.append(item + 2)
         try:
-            if np.sum((abs(np.array(temp_timePoint) - item)<1).astype(int))>syn_channels:
-                time_find.append(item)
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>syn_channels:
+                time_find.append(float(item))
                 mean_peak_power.append(PEAK)
                 Duration.append(duration_time)
         except:
@@ -967,3 +948,87 @@ def recode_annotation(x):
     else:
         print('error')
         pass
+def regressionline(intercept,s,x_range):
+    try:
+        x = np.array(x_range)
+        y = intercept*np.ones(len(x)) + s*x
+    except:
+        y = intercept + s*x
+    return y
+
+def dist(x1,y1, x2,y2, x3,y3): # x3,y3 is the point
+    px = x2-x1
+    py = y2-y1
+
+    something = px*px + py*py
+
+    u =  ((x3 - x1) * px + (y3 - y1) * py) / float(something)
+
+    if u > 1:
+        u = 1
+    elif u < 0:
+        u = 0
+
+    x = x1 + u * px
+    y = y1 + u * py
+
+    dx = x - x3
+    dy = y - y3
+
+    # Note: If the actual distance does not matter,
+    # if you only want to compare what this function
+    # returns to other results of this function, you
+    # can just return the squared distance instead
+    # (i.e. remove the sqrt) to gain a little performance
+
+    dist = math.sqrt(dx*dx + dy*dy)
+
+    return dist
+def pass_function(distance):
+    pass_ = distance > distance.mean()
+    up = np.where(np.diff(pass_.astype(int))>0)
+    down = np.where(np.diff(pass_.astype(int))<0)
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
+    C = np.vstack((up,down))
+    
+    return C
+def pass_(distance):
+    
+    C = pass_function(distance)
+    
+    up = C[0,:];down=C[1,:]
+    tempD= np.inf
+    for u,d in zip(up,down):
+        if u - np.argmax(distance)<tempD:
+            tempD = np.abs(u - np.argmax(distance))
+            up_ = u
+            down_=d
+    return (up_,down_)
+from scipy.stats import linregress
+def find_title_peak(x,y):
+    x=x[:100];y=y[:100]
+    s,intercept,_,_,_ = linregress(x=x,y=y)
+    y_pre = regressionline(intercept,s,x)
+
+    A = y - y_pre
+    A = A[10:]
+    try:
+        C = pass_(A)
+    except:
+        C = (np.argmax(A)-20,np.argmax(A)+20)
+    idx_freq_range=C
+    idx_devia = np.max([np.abs(np.argmax(A)-idx_freq_range[0]+10),np.abs(np.argmax(A)-idx_freq_range[1]+10)])
+    maxArg = np.argmax(A)+10
+    #print(maxArg,idx_devia)
+    return idx_devia,maxArg

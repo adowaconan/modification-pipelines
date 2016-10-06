@@ -148,8 +148,8 @@ for idx in subjectList: # manually change the range, the second number is the po
         
         #fig 9 in middle,4th
         ax9.plot(epochs[1:-1],My_ASI,color='black',alpha=1.,label='ASI');ax9.set(title='alpha + beta / fast_spindle_activity',ylabel='ratio unit')
-        ax99.plot(epochs[1:-1],pd.cut(np.array(My_ASI),4,labels=False),color='r',alpha=0.3,label='cate ASI')
-        ax99.set(yticks=np.arange(4),yticklabels=np.arange(4)+1,ylim=[-0.1,3.1])
+        ax99.plot(epochs[1:-1],pd.cut(np.array(My_ASI),2,labels=False),color='r',alpha=0.3,label='cate ASI')
+        ax99.set(yticks=np.arange(2),yticklabels=np.arange(2)+1,ylim=[-0.1,3.1])
         try:
             ax9.scatter(spindles['Onset'],My_ASI.mean()*np.ones(len(spindles)))
         except:
