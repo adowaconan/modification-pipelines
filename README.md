@@ -14,7 +14,7 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 3. MNE ICA: iterration = 3000, fixed random state
 4. artifact dectection is based on channles "LOC" and "ROC", and run automatically
 5. rejection parameters: EEG: 180 - 360 depending on subjects; tstep: 2 seconds; EOG criteria: 0.4; skewness: 2; kurt: 2; variance:2
-6. bandpass 1-50 Hz
+6. bandpass 0.1-50 Hz
 
 # Detecting spindles:
 1. bandpass slow/fast spindle range (10-12Hz/12.5-14.5Hz) [(Begmann et al., 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22037418])
