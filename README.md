@@ -13,19 +13,19 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 2. apply notch filter at 60 Hz
 3. MNE ICA: iterration = 3000, fixed random state
 4. artifact dectection is based on channles "LOC" and "ROC", and run automatically
-5. rejection parameters: EEG: 180 - 360 depending on subjects; tstep: 2 seconds; EOG criteria: 0.4; skewness: 2; kurt: 2; variance:2
+5. rejection parameters: EEG: 80 - 160 depending on subjects; tstep: 2 seconds; EOG criteria: 0.4; skewness: 2; kurt: 2; variance:2
 6. bandpass 0.1-50 Hz
 
 # Detecting spindles:
-1. bandpass slow/fast spindle range (10-12Hz/12.5-14.5Hz) [(Begmann et al., 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22037418])
+1. bandpass slow/fast spindle range (10-12Hz/12-14Hz) [(Begmann et al., 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22037418])
 2. select channels: F3, F4, C3, C4, O1, O2
 3. use a moving window to compute root-mean-square (RMS): Gaussian window, standard deviation = windown length / .68 / 2, window length = 200 samples, convolution using central part of convolution of the same size
 4. compute the harmonic mean of the RMSs of the 6 channels and call it the mean channel
 5. compute RMS for the mean channel
 6. compute trimmed mean and trimmed standard deviation (5%) on the data after the first 100 seconds and before the last 30 seconds for both the individual channels and the mean channel
-7. threshold = mean + .9 * standard deviation (Begmann et al., 2012)
+7. threshold = mean + .9 * standard deviation (Begmann et al., 2012) and less than 4 standard deviations.
 8. post threshold parameter: segments that is above the threshold and duration of the segments is in between 0.5 - 2 secs
-9. determining spindles: find spindles in AT LEAST (>=) 3 channels AND find spindle in average channel at the similar time stamp (deviate < 1 second)
+9. determining spindles: find spindles in AT LEAST (>=) 4 channels AND find spindle in average channel at the similar time stamp (deviate < 1.5 second)
 
 # [Power spetral density analysis](spisop.org/documentation)
 1. delta 1: 0-2 Hz
