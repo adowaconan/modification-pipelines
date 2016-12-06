@@ -768,7 +768,10 @@ def make_overlap_windows(raw,epoch_length=10):
 
 
 def update_progress(progress,total):
-    print('\r{0:.3f}%'.format(progress/total),end="",flush=True)
+    try:
+        print('\r{0:.3f}%'.format(progress/total),end="",flush=True)
+    except:
+        print('\r{0:.3f}%'.format(progress/total))
 def epoch_activity(raw,picks,epoch_length=10):
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
