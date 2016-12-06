@@ -111,7 +111,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
             raw.filter(None,c,l_trans_bandwidth=0.01,
                        h_trans_bandwidth='auto',filter_length=30,picks=picks)
-            noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
+            noise_cov=mne.compute_raw_covariance(raw,picks=picks)# re-referencing to average
             raw.notch_filter(np.arange(60,241,60), picks=picks)
             reject = dict(eeg=eegReject,eog=eogReject)
         
