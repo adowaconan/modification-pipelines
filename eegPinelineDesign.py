@@ -111,7 +111,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
             raw.filter(None,c,l_trans_bandwidth=0.01,
                        h_trans_bandwidth='auto',filter_length=30,picks=picks)
-            noise_cov=mne.compute_raw_covariance(raw,picks=picks)# re-referencing to average
+            noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
             raw.notch_filter(np.arange(60,241,60), picks=picks)
             reject = dict(eeg=eegReject,eog=eogReject)
         
@@ -767,11 +767,13 @@ def make_overlap_windows(raw,epoch_length=10):
     return np.array(epochs)
 
 
-def update_progress(progress,total):
+def regressionline(intercept,s,x_range):
     try:
-        print('\r{0:.3f}%'.format(progress/total),end="",flush=True)
+        x = np.array(x_range)
+        y = intercept*np.ones(len(x)) + s*x
     except:
-        print('\r{0:.3f}%'.format(progress/total))
+        y = intercept + s*x
+    return y
 def epoch_activity(raw,picks,epoch_length=10):
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
@@ -830,7 +832,7 @@ def trimmed_std(data,percentile):
     high = int((1. - percentile) * len(temp))
     return temp[low:high].std(ddof=0)
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
-    mul=threshold;nn=4.5
+    mul=threshold;nn=3.5
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
@@ -1035,3 +1037,98 @@ def find_title_peak(x,y):
     maxArg = np.argmax(A)+10
     #print(maxArg,idx_devia)
     return idx_devia,maxArg
+    
+def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
+    nn=3.5
+    
+    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+    peak_time={} #preallocate
+
+    for ii, names in enumerate(channelList):
+
+        peak_time[names]=[]
+        segment,_ = raw[ii,:]
+        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+        mph = trim_mean(RMS[ii,100000:-30000],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+        mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+        pass_= RMS[ii,:] > mph
+
+        up = np.where(np.diff(pass_.astype(int))>0)
+        down = np.where(np.diff(pass_.astype(int))<0)
+        up = up[0]
+        down = down[0]
+        ###############################
+        #print(down[0],up[0])
+        if down[0] < up[0]:
+            down = down[1:]
+        #print(down[0],up[0])
+        #############################
+        if (up.shape > down.shape) or (up.shape < down.shape):
+            size = np.min([up.shape,down.shape])
+            up = up[:size]
+            down = down[:size]
+        C = np.vstack((up,down))
+        for pairs in C.T:
+            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+                TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+                if np.max(SegmentForPeakSearching) < mpl:
+                    temp_temp_time = time[pairs[0]:pairs[1]]
+                    ints_temp = np.argmax(SegmentForPeakSearching)
+                    peak_time[names].append(temp_temp_time[ints_temp])
+                    
+        
+
+    peak_time['mean']=[];peak_at=[];duration=[]
+    RMS_mean=hmean(RMS)
+    
+    mph = trim_mean(RMS_mean[100000:-30000],0.05) + threshold * RMS_mean.std()
+    mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
+    pass_ = RMS_mean > mph
+    up = np.where(np.diff(pass_.astype(int))>0)
+    down= np.where(np.diff(pass_.astype(int))<0)
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
+    C = np.vstack((up,down))
+    for pairs in C.T:
+        
+        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+            TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
+            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+            if np.max(SegmentForPeakSearching)< mpl:
+                temp_time = time[pairs[0]:pairs[1]]
+                ints_temp = np.argmax(SegmentForPeakSearching)
+                peak_time['mean'].append(temp_time[ints_temp])
+                peak_at.append(SegmentForPeakSearching[ints_temp])
+                duration_temp = time[pairs[1]] - time[pairs[0]]
+                duration.append(duration_temp)
+    
+
+
+    time_find=[];mean_peak_power=[];Duration=[]
+    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+        temp_timePoint=[]
+        for ii, names in enumerate(channelList):
+            try:
+                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+            except:
+                temp_timePoint.append(item + 2)
+        try:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>syn_channels:
+                time_find.append(float(item))
+                mean_peak_power.append(PEAK)
+                Duration.append(duration_time)
+        except:
+            pass
+    return time_find,mean_peak_power,Duration,peak_time,peak_at
