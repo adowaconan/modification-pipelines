@@ -4,7 +4,8 @@ Created on Tue Dec 20 11:40:43 2016
 
 @author: install
 """
-
+import os
+os.chdir('C:\\Users\\ning\\OneDrive\\python works\\modification-pipelines')
 import eegPinelineDesign
 from eegPinelineDesign import *
 import numpy as np
@@ -54,7 +55,7 @@ def discritized_onset_label_auto(raw,df,spindle_segment):
     return discritized_time_to_zero_one_labels
             
 
-eegPinelineDesign.change_file_directory('D:\\NING - spindle\\suj13')
+eegPinelineDesign.change_file_directory('C:\\Users\\ning\\Downloads\\training set')
 
 had = True
 spindle_type = 'fast'
@@ -125,7 +126,7 @@ for cc,threshold in enumerate(thresholds):
         specificity[bb,cc] = TN.sum()/(FP.sum() + TN.sum())
         fpr, tpr, _ = roc_curve(manual_labels, auto_labels)
         ax.plot(fpr, tpr)
-        distance[bb,cc] = np.sum((manual_labels - auto_labels)**2)
+        distance[bb,cc] = TP.sum() + TN.sum() - FN.sum() - FP.sum()
         #plt.close('all')
 ax.set(xlabel='false positive rate',ylabel='true positive rate',title='ROC variates over 2 parameters: thresholds and channel numbers')
 fig.savefig('ROC variates over 2 parameters_ thresholds and channel numbers.png')
