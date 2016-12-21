@@ -58,7 +58,7 @@ def discritized_onset_label_auto(raw,df,spindle_segment):
 eegPinelineDesign.change_file_directory('C:\\Users\\ning\\Downloads\\training set')
 
 had = True
-spindle_type = 'fast'
+spindle_type = 'slow'
 file_to_read = 'suj13_l2nap_day2.fif'
 spindle_segment = 2 # define spindle long as 2 seconds for all manual annotations
 
@@ -75,7 +75,7 @@ else:
 channelList = ['F3','F4','C3','C4','O1','O2']
 moving_window_size=200;#syn_channels=int(.75 * len(channelList));
 l_bound=0.5;h_bound=2; # not using in the example, they are parameters could be reset in the function
-thresholds = np.arange(0.1,0.9,0.01);syn_channels = [1,2,3,4,5,6]
+thresholds = np.arange(0.1,0.9,0.05);syn_channels = [1,2,3,4,5,6]
 
 manual_spindle = pd.read_csv('suj13_nap_day2_annotations.txt')
 manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
@@ -132,7 +132,7 @@ ax.set(xlabel='false positive rate',ylabel='true positive rate',title='ROC varia
 fig.savefig('ROC variates over 2 parameters_ thresholds and channel numbers.png')
 fig,ax = plt.subplots(1,1,figsize=(20,20))
 xx,yy = np.meshgrid(thresholds,syn_channels)
-T = ax.pcolormesh(xx,yy,sensitivity,shading='gouraud',cmap=plt.cm.Blues)
+T = ax.pcolormesh(xx,yy,sensitivity,shading='gouraud')#,cmap=plt.cm.Blues)
 plt.colorbar(T)
 ax.set(xticks=thresholds[::3],xticklabels=thresholds[::3],
        yticklabels=syn_channels,
@@ -142,7 +142,7 @@ ax.set(xticks=thresholds[::3],xticklabels=thresholds[::3],
 fig.savefig('Heat map of sensitivity, thresholds and number of channels.png')       
 fig,ax = plt.subplots(1,1,figsize=(20,20))
 xx,yy = np.meshgrid(thresholds,syn_channels)
-T = ax.pcolormesh(xx,yy,1-specificity,shading='gouraud',cmap=plt.cm.Blues)
+T = ax.pcolormesh(xx,yy,1-specificity,shading='gouraud')#,cmap=plt.cm.Blues)
 plt.colorbar(T)
 ax.set(xticks=thresholds[::3],xticklabels=thresholds[::3],
        yticklabels=syn_channels,
@@ -152,7 +152,7 @@ ax.set(xticks=thresholds[::3],xticklabels=thresholds[::3],
 fig.savefig('Heat map of false alarm rate (1-specificity), thresholds and number of channels.png')
 fig,ax = plt.subplots(1,1,figsize=(20,20))
 xx,yy = np.meshgrid(thresholds,syn_channels)
-T = ax.pcolormesh(xx,yy,distance,shading='gouraud',cmap=plt.cm.Blues)
+T = ax.pcolormesh(xx,yy,distance,shading='gouraud')#,cmap=plt.cm.Blues)
 plt.colorbar(T)
 ax.set(xticks=thresholds[::3],xticklabels=thresholds[::3],
        yticklabels=syn_channels,
