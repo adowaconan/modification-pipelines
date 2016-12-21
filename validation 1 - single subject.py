@@ -4,8 +4,7 @@ Created on Tue Dec 20 11:40:43 2016
 
 @author: install
 """
-import os
-os.chdir('C:\\Users\\ning\\OneDrive\\python works\\modification-pipelines')
+
 import eegPinelineDesign
 from eegPinelineDesign import *
 import numpy as np
@@ -14,7 +13,7 @@ import matplotlib.pyplot as plt
 import mne
 import warnings
 warnings.filterwarnings("ignore")
-from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_curve, auc
 import re
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
@@ -30,7 +29,7 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
                            (intervalCheck(time_interval,spindle_end)))
         return a
 def discritized_onset_label_manual(raw,df,spindle_segment):
-    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment+0.5)
+    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -43,7 +42,7 @@ def discritized_onset_label_manual(raw,df,spindle_segment):
     return discritized_time_to_zero_one_labels
 def discritized_onset_label_auto(raw,df,spindle_segment):
     spindle_duration = df['Duration'].values
-    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment+0.5)
+    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -54,8 +53,10 @@ def discritized_onset_label_auto(raw,df,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels
             
-
-eegPinelineDesign.change_file_directory('C:\\Users\\ning\\Downloads\\training set')
+try:
+    eegPinelineDesign.change_file_directory('C:\\Users\\ning\\Downloads\\training set')
+except:
+    eegPinelineDesign.change_file_directory('D:\\NING - spindle\\suj13')
 
 had = True
 spindle_type = 'slow'
@@ -75,7 +76,7 @@ else:
 channelList = ['F3','F4','C3','C4','O1','O2']
 moving_window_size=200;#syn_channels=int(.75 * len(channelList));
 l_bound=0.5;h_bound=2; # not using in the example, they are parameters could be reset in the function
-thresholds = np.arange(0.1,0.9,0.05);syn_channels = [1,2,3,4,5,6]
+thresholds = np.arange(0.1,0.95,0.05);syn_channels = [1,2,3,4,5,6]
 
 manual_spindle = pd.read_csv('suj13_nap_day2_annotations.txt')
 manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
@@ -173,9 +174,3 @@ for ii in range(len(thresholds)):
 ax[1].legend()
 std_sen_over_channels,std_spe_over_channels = sensitivity.std(0),specificity.std(0)
 std_sen_over_thresholds,std_spe_over_thresholds = sensitivity.std(1),specificity.std(1)
-
-
-
-
-
-

@@ -14,6 +14,8 @@ import warnings
 warnings.filterwarnings("ignore")
 import pandas as pd
 
+
+
 """Setting parameters"""
 l_freq=10;h_freq=12 # this is how we define a slpw spindle
 channelList = ['F3','F4','C3','C4','O1','O2']
