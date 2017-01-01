@@ -4,7 +4,8 @@ Created on Wed Dec 21 14:06:23 2016
 
 @author: install
 """
-
+import os
+os.chdir('C:\\Users\\ning\\OneDrive\\python works\\modification-pipelines')
 import eegPinelineDesign
 from eegPinelineDesign import *
 import numpy as np
