@@ -439,7 +439,7 @@ def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
 
 def getOverlap(a,b):
     return max(0,min(a[1],b[1]) - max(a[0],b[0]))
-def intervalCheck(a,b):
+def intervalCheck(a,b):#a is an array and b is a point
     return a[0] <= b <= a[1]
 def spindle_overlapping_test(spindles,timePoint,windowsize,tolerance=0.01):
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
@@ -953,13 +953,7 @@ def recode_annotation(x):
     else:
         print('error')
         pass
-def regressionline(intercept,s,x_range):
-    try:
-        x = np.array(x_range)
-        y = intercept*np.ones(len(x)) + s*x
-    except:
-        y = intercept + s*x
-    return y
+
 
 def dist(x1,y1, x2,y2, x3,y3): # x3,y3 is the point
     px = x2-x1
