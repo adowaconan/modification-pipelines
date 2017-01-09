@@ -1046,7 +1046,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_= RMS[ii,:] > mph
+        pass_= RMS[ii,:] > trim_mean(RMS[ii,100000:-30000],0.05)#should be greater than then mean not the threshold to compute duration
 
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
@@ -1079,7 +1079,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
     
     mph = trim_mean(RMS_mean[100000:-30000],0.05) + threshold * RMS_mean.std()
     mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
-    pass_ = RMS_mean > mph
+    pass_ = RMS_mean > trim_mean(RMS_mean[100000:-30000],0.05)
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
     up = up[0]
