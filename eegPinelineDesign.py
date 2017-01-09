@@ -653,7 +653,7 @@ def RMS_calculation(intervals,dataSegment,mul):
     time = np.linspace(intervals[0],intervals[1],len(segment))
     RMS = window_rms(segment,200)
     mph=scipy.stats.trim_mean(RMS,0.05) + mul * RMS.std()
-    pass_=RMS > mph
+    pass_=RMS > scipy.stats.trim_mean(RMS,0.05)
     peak_time=RMS_pass(pass_,time,RMS)
     return peak_time,RMS,time
 
@@ -740,7 +740,7 @@ def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,major
     RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
         #ax1.plot(time,RMS_mean,color='k',alpha=0.3)
     mph = RMS_mean.mean() + mul * RMS_mean.std()
-    pass_ = RMS_mean > mph
+    pass_ = RMS_mean > RMS_mean.mean()
     peak_time['mean']=RMS_pass(pass_,time,RMS_mean)
 
     result = pd.DataFrame({'Onset':time_find})
@@ -848,7 +848,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_= RMS[ii,:] > mph
+        pass_= RMS[ii,:] > trim_mean(RMS[ii,100000:-30000],0.05)
 
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
@@ -888,7 +888,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
     mph = trim_mean(RMS_mean[100000:-30000],0.05) + mul * RMS_mean.std()
     mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
-    pass_ = RMS_mean > mph
+    pass_ = RMS_mean > trim_mean(RMS_mean[100000:-30000],0.05)
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
     up = up[0]
