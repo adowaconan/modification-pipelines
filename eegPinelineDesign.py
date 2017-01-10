@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Mar 10 21:39:38 2016
-
 @author: ning
 """
 
@@ -453,7 +452,6 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
                  kpsh=False, valley=False, show=False, ax=None):
 
     """Detect peaks in data based on their amplitude and other features.
-
     Parameters
     ----------
     x : 1D array_like
@@ -477,25 +475,19 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     show : bool, optional (default = False)
         if True (1), plot data in matplotlib figure.
     ax : a matplotlib.axes.Axes instance, optional (default = None).
-
     Returns
     -------
     ind : 1D array_like
         indeces of the peaks in `x`.
-
     Notes
     -----
     The detection of valleys instead of peaks is performed internally by simply
     negating the data: `ind_valleys = detect_peaks(-x)`
-
     The function can handle NaN's
-
     See this IPython Notebook [1]_.
-
     References
     ----------
     .. [1] http://nbviewer.ipython.org/github/demotu/BMC/blob/master/notebooks/DetectPeaks.ipynb
-
     Examples
     --------
     >>> from detect_peaks import detect_peaks
@@ -504,23 +496,18 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     >>> # detect all peaks and plot data
     >>> ind = detect_peaks(x, show=True)
     >>> print(ind)
-
     >>> x = np.sin(2*np.pi*5*np.linspace(0, 1, 200)) + np.random.randn(200)/5
     >>> # set minimum peak height = 0 and minimum peak distance = 20
     >>> detect_peaks(x, mph=0, mpd=20, show=True)
-
     >>> x = [0, 1, 0, 2, 0, 3, 0, 2, 0, 1, 0]
     >>> # set minimum peak distance = 2
     >>> detect_peaks(x, mpd=2, show=True)
-
     >>> x = np.sin(2*np.pi*5*np.linspace(0, 1, 200)) + np.random.randn(200)/5
     >>> # detection of valleys instead of peaks
     >>> detect_peaks(x, mph=0, mpd=20, valley=True, show=True)
-
     >>> x = [0, 1, 1, 0, 1, 1, 0]
     >>> # detect both edges
     >>> detect_peaks(x, edge='both', show=True)
-
     >>> x = [-2, 1, -2, 2, 1, 1, 3, 0]
     >>> # set threshold = 2
     >>> detect_peaks(x, threshold = 2, show=True)
@@ -1129,7 +1116,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
         spindle_start = spindle
-        spindle_end   = spindle + spindle_duration
+        spindle_end   = spindle + 2
         a =  np.logical_or((intervalCheck(time_interval,spindle_start)),
                            (intervalCheck(time_interval,spindle_end)))
         return a
@@ -1176,4 +1163,4 @@ def read_annotation(file_to_read,raw,file_in_fold):
             gold_standard['Onset'].append(float(row.Onset))
             gold_standard['Annotation'].append(row.Annotation)
     gold_standard = pd.DataFrame(gold_standard) 
-    return gold_standard     
+    return gold_standard 
