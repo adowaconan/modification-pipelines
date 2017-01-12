@@ -640,7 +640,7 @@ def RMS_calculation(intervals,dataSegment,mul):
     time = np.linspace(intervals[0],intervals[1],len(segment))
     RMS = window_rms(segment,200)
     mph=scipy.stats.trim_mean(RMS,0.05) + mul * RMS.std()
-    pass_=RMS > scipy.stats.trim_mean(RMS,0.05)
+    pass_=RMS > mph
     peak_time=RMS_pass(pass_,time,RMS)
     return peak_time,RMS,time
 
@@ -1233,7 +1233,7 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
     else:
         if key == 'miss':
             
-            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+            if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
                 idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
                 temp_data = raw_data[:,idx_start:idx_stop].flatten()
                 if temp_data.shape[0] == 6*3*raw.info['sfreq']:
@@ -1247,7 +1247,7 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                     return temp_data,1
         elif key == 'hit':
             
-            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+            if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
                 idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
                 temp_data = raw_data[:,idx_start:idx_stop].flatten()
                 if temp_data.shape[0] == 6*3*raw.info['sfreq']:
@@ -1261,7 +1261,7 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                     return temp_data,1
         elif key == 'fa':
             
-            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+            if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
                 idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
                 temp_data = raw_data[:,idx_start:idx_stop].flatten()
                 if temp_data.shape[0] == 6*3*raw.info['sfreq']:
@@ -1275,7 +1275,7 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                     return temp_data,0
         elif key == 'cr':
             
-            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+            if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
                 idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
                 temp_data = raw_data[:,idx_start:idx_stop].flatten()
                 if temp_data.shape[0] == 6*3*raw.info['sfreq']:
