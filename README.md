@@ -19,13 +19,13 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 # Detecting spindles:
 1. bandpass slow/fast spindle range (10-12Hz/12-14Hz) [(Begmann et al., 2012)](http://www.ncbi.nlm.nih.gov/pubmed/22037418])
 2. select channels: F3, F4, C3, C4, O1, O2
-3. use a moving window to compute root-mean-square (RMS): Gaussian window, standard deviation = windown length / .68 / 2, window length = 200 samples, convolution using central part of convolution of the same size
+3. use a moving window to compute root-mean-square (RMS): Gaussian window, standard deviation = windown length / .68 / 2, window length = 2000 samples, convolution using central part of convolution of the same size
 4. compute the harmonic mean of the RMSs of the 6 channels and call it the mean channel
 5. compute RMS for the mean channel
 6. compute trimmed mean and trimmed standard deviation (5%) on the data after the first 100 seconds and before the last 30 seconds for both the individual channels and the mean channel
-7. threshold = mean + .9 * standard deviation (Begmann et al., 2012) and less than 4 standard deviations.
+7. threshold = mean + .8 * standard deviation (Begmann et al., 2012) and less than 4 standard deviations.
 8. post threshold parameter: segments that is above the threshold and duration of the segments is in between 0.5 - 2 secs
-9. determining spindles: find spindles in AT LEAST (>=) 4 channels AND find spindle in average channel at the similar time stamp (deviate < 1.5 second)
+9. determining spindles: find spindles in AT LEAST (>=) 3 channels AND find spindle in average channel at the similar time stamp (deviate < 1.5 second)
 
 # [Power spetral density analysis](spisop.org/documentation)
 1. delta 1: 0-2 Hz
