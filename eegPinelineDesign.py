@@ -835,7 +835,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_= RMS[ii,:] > trim_mean(RMS[ii,100000:-30000],0.05)
+        pass_ = RMS[ii,:] > mph
 
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
@@ -875,7 +875,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
     mph = trim_mean(RMS_mean[100000:-30000],0.05) + mul * RMS_mean.std()
     mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
-    pass_ = RMS_mean > trim_mean(RMS_mean[100000:-30000],0.05)
+    pass_ =RMS_mean > mph
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
     up = up[0]
@@ -893,7 +893,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     C = np.vstack((up,down))
     for pairs in C.T:
         
-        if 0.5 < (time[pairs[1]] - time[pairs[0]]) < 2:
+        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
             TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
             SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
             if np.max(SegmentForPeakSearching)< mpl:
@@ -917,7 +917,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
             except:
                 temp_timePoint.append(item + 2)
         try:
-            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>syn_channels:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
                 time_find.append(float(item))
                 mean_peak_power.append(PEAK)
                 Duration.append(duration_time)
@@ -1033,7 +1033,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_= RMS[ii,:] > trim_mean(RMS[ii,100000:-30000],0.05)#should be greater than then mean not the threshold to compute duration
+        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
 
         up = np.where(np.diff(pass_.astype(int))>0)
         down = np.where(np.diff(pass_.astype(int))<0)
@@ -1066,7 +1066,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
     
     mph = trim_mean(RMS_mean[100000:-30000],0.05) + threshold * RMS_mean.std()
     mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
-    pass_ = RMS_mean > trim_mean(RMS_mean[100000:-30000],0.05)
+    pass_ =RMS_mean > mph
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
     up = up[0]
@@ -1106,7 +1106,7 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
             except:
                 temp_timePoint.append(item + 2)
         try:
-            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>syn_channels:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
                 time_find.append(float(item))
                 mean_peak_power.append(PEAK)
                 Duration.append(duration_time)
@@ -1151,8 +1151,8 @@ def discritized_onset_label_auto(raw,df,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels
 
-def read_annotation(file_to_read,raw,file_in_fold):
-    annotation_file = [files for files in file_in_fold if('txt' in files) and (file_to_read.split('_')[0] in files) and (file_to_read.split('_')[1] in files)]
+def read_annotation(raw, annotation_file):
+    #annotation_file = [files for files in file_in_fold if('txt' in files) and (file_to_read.split('_')[0] in files) and (file_to_read.split('_')[1] in files)]
     manual_spindle = pd.read_csv(annotation_file[0])
     manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
     manual_spindle = manual_spindle[manual_spindle.Onset > 100] 
@@ -1164,3 +1164,126 @@ def read_annotation(file_to_read,raw,file_in_fold):
             gold_standard['Annotation'].append(row.Annotation)
     gold_standard = pd.DataFrame(gold_standard) 
     return gold_standard 
+def stage_check(x):
+    import re
+    if re.compile('2',re.IGNORECASE).search(x):
+        return True
+    else:
+        return False
+def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='miss',old=False):
+
+    if old:
+        if key == 'miss':
+            
+                
+            idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+            temp_data = raw_data[:,idx_start:idx_stop].flatten()
+            if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                           tmax=time_interval_2,proj=False,)
+                psds = 10* np.log10(psds)
+
+                temp_data = np.concatenate((temp_data,
+                                            psds.max(1),
+                                            freqs[np.argmax(psds,1)]))
+                return temp_data,1
+        elif key == 'hit':
+            
+                
+            idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+            temp_data = raw_data[:,idx_start:idx_stop].flatten()
+            if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                           tmax=time_interval_2,proj=False,)
+                psds = 10* np.log10(psds)
+
+                temp_data = np.concatenate((temp_data,
+                                            psds.max(1),
+                                            freqs[np.argmax(psds,1)]))
+                return temp_data,1
+        elif key == 'fa':
+            
+                
+            idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+            temp_data = raw_data[:,idx_start:idx_stop].flatten()
+            if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                           tmax=time_interval_2,proj=False,)
+                psds = 10* np.log10(psds)
+
+                temp_data = np.concatenate((temp_data,
+                                            psds.max(1),
+                                            freqs[np.argmax(psds,1)]))
+                return temp_data,0
+        elif key == 'cr':
+            
+                
+            idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+            temp_data = raw_data[:,idx_start:idx_stop].flatten()
+            if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                           tmax=time_interval_2,proj=False,)
+                psds = 10* np.log10(psds)
+
+                temp_data = np.concatenate((temp_data,
+                                            psds.max(1),
+                                            freqs[np.argmax(psds,1)]))
+                return temp_data,0
+    
+    else:
+        if key == 'miss':
+            
+            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+                idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+                temp_data = raw_data[:,idx_start:idx_stop].flatten()
+                if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                    psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                               tmax=time_interval_2,proj=False,)
+                    psds = 10* np.log10(psds)
+
+                    temp_data = np.concatenate((temp_data,
+                                                psds.max(1),
+                                                freqs[np.argmax(psds,1)]))
+                    return temp_data,1
+        elif key == 'hit':
+            
+            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+                idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+                temp_data = raw_data[:,idx_start:idx_stop].flatten()
+                if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                    psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                               tmax=time_interval_2,proj=False,)
+                    psds = 10* np.log10(psds)
+
+                    temp_data = np.concatenate((temp_data,
+                                                psds.max(1),
+                                                freqs[np.argmax(psds,1)]))
+                    return temp_data,1
+        elif key == 'fa':
+            
+            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+                idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+                temp_data = raw_data[:,idx_start:idx_stop].flatten()
+                if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                    psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                               tmax=time_interval_2,proj=False,)
+                    psds = 10* np.log10(psds)
+
+                    temp_data = np.concatenate((temp_data,
+                                                psds.max(1),
+                                                freqs[np.argmax(psds,1)]))
+                    return temp_data,0
+        elif key == 'cr':
+            
+            if (sum(eegPinelineDesign.intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(eegPinelineDesign.intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
+                idx_start,idx_stop= raw.time_as_index([time_interval_1,time_interval_2]) 
+                temp_data = raw_data[:,idx_start:idx_stop].flatten()
+                if temp_data.shape[0] == 6*3*raw.info['sfreq']:
+                    psds,freqs = psd_multitaper(raw,low_bias=True,tmin=time_interval_1,
+                                               tmax=time_interval_2,proj=False,)
+                    psds = 10* np.log10(psds)
+
+                    temp_data = np.concatenate((temp_data,
+                                                psds.max(1),
+                                                freqs[np.argmax(psds,1)]))
+                    return temp_data,0
