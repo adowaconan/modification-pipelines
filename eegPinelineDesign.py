@@ -8,6 +8,8 @@ import numpy as np
 import random
 import mne
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rc('font', size=16); matplotlib.rc('axes', titlesize=16) 
 import warnings
 warnings.filterwarnings("ignore")
 import os
@@ -18,8 +20,6 @@ import scipy
 from sklearn.linear_model import LogisticRegression
 from sklearn.decomposition import PCA,FastICA
 from sklearn.pipeline import Pipeline,make_pipeline
-from sklearn.grid_search import GridSearchCV
-from sklearn.cross_validation import cross_val_score
 from scipy.fftpack import fft,ifft
 import math
 from sklearn.metrics import classification_report,accuracy_score,confusion_matrix
@@ -438,8 +438,8 @@ def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
 
 def getOverlap(a,b):
     return max(0,min(a[1],b[1]) - max(a[0],b[0]))
-def intervalCheck(a,b):#a is an array and b is a point
-    return a[0] <= b <= a[1]
+def intervalCheck(a,b,tol=0):#a is an array and b is a point
+    return a[0]-tol <= b <= a[1]+tol
 def spindle_overlapping_test(spindles,timePoint,windowsize,tolerance=0.01):
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     return all(getOverlap([startPoint,endPoint],[instance-windowsize,instance+windowsize])<=tolerance for instance in spindles)
@@ -772,7 +772,7 @@ def epoch_activity(raw,picks,epoch_length=10):
     print('calculating power spectral density')
     for ii,epch in enumerate(epochs):
         # monitor the progress (urgly useless)
-        update_progress(ii,len(epochs))
+        #update_progress(ii,len(epochs))
         psds,f = TS_analysis(raw,epch,picks,0,40)
         psds = psds[0]
         psds = 10*np.log10(psds)#rescale
@@ -1112,6 +1112,119 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
                 Duration.append(duration_time)
         except:
             pass
+    
+        
+    return time_find,mean_peak_power,Duration,peak_time,peak_at
+def spindle_validation_with_sleep_stage(raw,channelList,file_to_read,annotations,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
+    nn=3.5
+    
+    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+    peak_time={} #preallocate
+    # seperate out stage 2
+    stages = annotations[annotations.Annotation.apply(stage_check)]
+    On = stages[::2];Off = stages[1::2]
+    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+    if abs(np.diff(stage_on_off[0]) - 30) < 2:
+        pass
+    else:
+        On = stages[1::2];Off = stages[::2]
+        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+
+    for ii, names in enumerate(channelList):
+
+        peak_time[names]=[]
+        segment,_ = raw[ii,:]
+        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+        mph = trim_mean(RMS[ii,100000:-30000],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+        mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
+
+        up = np.where(np.diff(pass_.astype(int))>0)
+        down = np.where(np.diff(pass_.astype(int))<0)
+        up = up[0]
+        down = down[0]
+        ###############################
+        #print(down[0],up[0])
+        if down[0] < up[0]:
+            down = down[1:]
+        #print(down[0],up[0])
+        #############################
+        if (up.shape > down.shape) or (up.shape < down.shape):
+            size = np.min([up.shape,down.shape])
+            up = up[:size]
+            down = down[:size]
+        C = np.vstack((up,down))
+        for pairs in C.T:
+            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+                TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+                if np.max(SegmentForPeakSearching) < mpl:
+                    temp_temp_time = time[pairs[0]:pairs[1]]
+                    ints_temp = np.argmax(SegmentForPeakSearching)
+                    peak_time[names].append(temp_temp_time[ints_temp])
+                    
+        
+
+    peak_time['mean']=[];peak_at=[];duration=[]
+    RMS_mean=hmean(RMS)
+    
+    mph = trim_mean(RMS_mean[100000:-30000],0.05) + threshold * RMS_mean.std()
+    mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
+    pass_ =RMS_mean > mph
+    up = np.where(np.diff(pass_.astype(int))>0)
+    down= np.where(np.diff(pass_.astype(int))<0)
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
+    C = np.vstack((up,down))
+    for pairs in C.T:
+        
+        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+            TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
+            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+            if np.max(SegmentForPeakSearching)< mpl:
+                temp_time = time[pairs[0]:pairs[1]]
+                ints_temp = np.argmax(SegmentForPeakSearching)
+                peak_time['mean'].append(temp_time[ints_temp])
+                peak_at.append(SegmentForPeakSearching[ints_temp])
+                duration_temp = time[pairs[1]] - time[pairs[0]]
+                duration.append(duration_temp)
+    
+
+
+    time_find=[];mean_peak_power=[];Duration=[]
+    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+        temp_timePoint=[]
+        for ii, names in enumerate(channelList):
+            try:
+                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+            except:
+                temp_timePoint.append(item + 2)
+        try:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
+                time_find.append(float(item))
+                mean_peak_power.append(PEAK)
+                Duration.append(duration_time)
+        except:
+            pass
+    temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
+    for single_time_find, single_mean_peak_power, single_duration in zip(time_find,mean_peak_power,Duration):
+        for on_time,off_time in stage_on_off:
+            if intervalCheck([on_time,off_time],single_time_find,tol=tol):
+                temp_time_find.append(single_time_find)
+                temp_mean_peak_power.append(single_mean_peak_power)
+                temp_duration.append(single_duration)
+    time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
     return time_find,mean_peak_power,Duration,peak_time,peak_at
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
@@ -1149,7 +1262,7 @@ def discritized_onset_label_auto(raw,df,spindle_segment):
         for kk,spindle in enumerate(df['Onset']):
             if spindle_comparison(time_interval,spindle,spindle_duration[kk],spindle_duration_fix=False):
                 discritized_time_to_zero_one_labels[jj] = 1
-    return discritized_time_to_zero_one_labels
+    return discritized_time_to_zero_one_labels,discritized_time_intervals
 
 def read_annotation(raw, annotation_file):
     #annotation_file = [files for files in file_in_fold if('txt' in files) and (file_to_read.split('_')[0] in files) and (file_to_read.split('_')[1] in files)]
@@ -1187,6 +1300,8 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                             psds.max(1),
                                             freqs[np.argmax(psds,1)]))
                 return temp_data,1
+            else:
+                return [[],[]]
         elif key == 'hit':
             
                 
@@ -1201,6 +1316,8 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                             psds.max(1),
                                             freqs[np.argmax(psds,1)]))
                 return temp_data,1
+            else:
+                return [[],[]]
         elif key == 'fa':
             
                 
@@ -1215,6 +1332,8 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                             psds.max(1),
                                             freqs[np.argmax(psds,1)]))
                 return temp_data,0
+            else:
+                return [[],[]]
         elif key == 'cr':
             
                 
@@ -1229,6 +1348,8 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                             psds.max(1),
                                             freqs[np.argmax(psds,1)]))
                 return temp_data,0
+            else:
+                return [[],[]]
     
     else:
         if key == 'miss':
@@ -1245,6 +1366,10 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                                 psds.max(1),
                                                 freqs[np.argmax(psds,1)]))
                     return temp_data,1
+                else:
+                    return [[],[]]
+            else:
+                return [[],[]]
         elif key == 'hit':
             
             if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
@@ -1259,6 +1384,10 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                                 psds.max(1),
                                                 freqs[np.argmax(psds,1)]))
                     return temp_data,1
+                else:
+                    return [[],[]]
+            else:
+                return [[],[]]
         elif key == 'fa':
             
             if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
@@ -1273,6 +1402,10 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                                 psds.max(1),
                                                 freqs[np.argmax(psds,1)]))
                     return temp_data,0
+                else:
+                    return [[],[]]
+            else:
+                return [[],[]]
         elif key == 'cr':
             
             if (sum(intervalCheck(k,time_interval_1) for k in stage_on_off) >=1 ) and (sum(intervalCheck(k,time_interval_2) for k in stage_on_off) >=1):
@@ -1287,3 +1420,7 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                                                 psds.max(1),
                                                 freqs[np.argmax(psds,1)]))
                     return temp_data,0
+                else:
+                    return [[],[]]
+            else:
+                return [[],[]]
