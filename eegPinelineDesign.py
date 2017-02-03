@@ -1424,3 +1424,54 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                     return [[],[]]
             else:
                 return [[],[]]
+def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritized_time_intervals,samples,label,old):
+    idx_hit = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 1)))[0]
+    idx_CR  = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 0)))[0]
+    idx_miss= np.where(comparedRsult == 1)[0]
+    idx_FA  = np.where(comparedRsult == -1)[0]
+    raw_data, time = raw[:,100*raw.info['sfreq']:-100*raw.info['sfreq']]
+    stages = annotation[annotation.Annotation.apply(stage_check)]
+    
+    On = stages[::2];Off = stages[1::2]
+    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+    if abs(np.diff(stage_on_off[0]) - 30) < 2:
+        pass
+    else:
+        On = stages[1::2];Off = stages[::2]
+        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+
+    for jj,(time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_miss]):
+        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='miss', old=old)
+
+        if len(a) > 0:
+            a = a.tolist()
+            #print(len(a))
+            samples.append(a)
+            label.append(c)
+
+    for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_FA]):
+
+        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='fa', old=old)
+        if len(a) > 0:
+            a = a.tolist()
+            #print(len(a))
+            samples.append(a)
+            label.append(c)
+    b = abs(len(idx_miss) - len(idx_FA))
+    if b > 0:
+        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_CR][:b]):
+            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='cr', old=old)
+            if len(a) > 0:
+                a = a.tolist()
+                #print(len(a))
+                samples.append(a)
+                label.append(c)
+    elif b < 0:
+        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_hit][:b]):
+            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='hit', old=old)
+            if len(a) > 0:
+                a = a.tolist()
+                #print(len(a))
+                samples.append(a)
+                label.append(c)
+    return samples,label
