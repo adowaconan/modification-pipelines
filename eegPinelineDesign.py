@@ -1226,6 +1226,126 @@ def spindle_validation_with_sleep_stage(raw,channelList,file_to_read,annotations
                 temp_duration.append(single_duration)
     time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
     return time_find,mean_peak_power,Duration,peak_time,peak_at
+def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
+                                                                file_to_read,annotations,
+                                                                moving_window_size=200,
+                                                                threshold=.9,
+                                                                syn_channels=3,
+                                                                l_freq=0,h_freq=200,
+                                                                l_bound=0.5,h_bound=2,tol=1):
+    nn=3.5
+    
+    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+    widths = np.arange(1,11)
+    peak_time={} #preallocate
+    # seperate out stage 2
+    stages = annotations[annotations.Annotation.apply(stage_check)]
+    On = stages[::2];Off = stages[1::2]
+    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+    if abs(np.diff(stage_on_off[0]) - 30) < 2:
+        pass
+    else:
+        On = stages[1::2];Off = stages[::2]
+        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+
+    for ii, names in enumerate(channelList):
+
+        peak_time[names]=[]
+        segment,_ = raw[ii,:]
+        cwtmatr = scipy.signal.cwt(segment[0,:],scipy.signal.morlet,widths)
+        RMS[ii,:] = window_rms(cwtmatr[0,:],moving_window_size)
+        #RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+        mph = trim_mean(RMS[ii,100000:-30000],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+        mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
+
+        up = np.where(np.diff(pass_.astype(int))>0)
+        down = np.where(np.diff(pass_.astype(int))<0)
+        up = up[0]
+        down = down[0]
+        ###############################
+        #print(down[0],up[0])
+        if down[0] < up[0]:
+            down = down[1:]
+        #print(down[0],up[0])
+        #############################
+        if (up.shape > down.shape) or (up.shape < down.shape):
+            size = np.min([up.shape,down.shape])
+            up = up[:size]
+            down = down[:size]
+        C = np.vstack((up,down))
+        for pairs in C.T:
+            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+                TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+                if np.max(SegmentForPeakSearching) < mpl:
+                    temp_temp_time = time[pairs[0]:pairs[1]]
+                    ints_temp = np.argmax(SegmentForPeakSearching)
+                    peak_time[names].append(temp_temp_time[ints_temp])
+                    
+        
+
+    peak_time['mean']=[];peak_at=[];duration=[]
+    RMS_mean=hmean(RMS)
+    
+    mph = trim_mean(RMS_mean[100000:-30000],0.05) + threshold * RMS_mean.std()
+    mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
+    pass_ =RMS_mean > mph
+    up = np.where(np.diff(pass_.astype(int))>0)
+    down= np.where(np.diff(pass_.astype(int))<0)
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
+    C = np.vstack((up,down))
+    for pairs in C.T:
+        
+        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+            TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
+            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+            if np.max(SegmentForPeakSearching)< mpl:
+                temp_time = time[pairs[0]:pairs[1]]
+                ints_temp = np.argmax(SegmentForPeakSearching)
+                peak_time['mean'].append(temp_time[ints_temp])
+                peak_at.append(SegmentForPeakSearching[ints_temp])
+                duration_temp = time[pairs[1]] - time[pairs[0]]
+                duration.append(duration_temp)
+    
+
+
+    time_find=[];mean_peak_power=[];Duration=[]
+    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+        temp_timePoint=[]
+        for ii, names in enumerate(channelList):
+            try:
+                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+            except:
+                temp_timePoint.append(item + 2)
+        try:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
+                time_find.append(float(item))
+                mean_peak_power.append(PEAK)
+                Duration.append(duration_time)
+        except:
+            pass
+    temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
+    for single_time_find, single_mean_peak_power, single_duration in zip(time_find,mean_peak_power,Duration):
+        for on_time,off_time in stage_on_off:
+            if intervalCheck([on_time,off_time],single_time_find,tol=tol):
+                temp_time_find.append(single_time_find)
+                temp_mean_peak_power.append(single_mean_peak_power)
+                temp_duration.append(single_duration)
+    time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
+    return time_find,mean_peak_power,Duration,peak_time,peak_at
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
         spindle_start = spindle
@@ -1457,6 +1577,7 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
             #print(len(a))
             samples.append(a)
             label.append(c)
+    """
     b = abs(len(idx_miss) - len(idx_FA))
     if b > 0:
         for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_CR][:b]):
@@ -1474,4 +1595,81 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
                 #print(len(a))
                 samples.append(a)
                 label.append(c)
+    """
     return samples,label
+def data_gathering_pipeline(temp_dictionary,
+                            sampling,
+                            labeling,do,sub,day,
+                             raw,channelList,
+                            file,windowSize,
+                            threshold,syn_channel,
+                            l,h,annotation,old,annotation_file):
+    if do == 'with_stage':
+        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,
+                                                                                                 channelList,file,annotation,
+                                                                                                 moving_window_size=windowSize,
+                                                                                                 threshold=threshold,
+                                                                                                 syn_channels=syn_channel,
+                                                                                                 l_freq=l,
+                                                                                                 h_freq=h,
+                                                                                                 l_bound=0.55,
+                                                                                                 h_bound=3.55,tol=1)
+    elif do == 'without_stage':
+        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
+                                                                                     channelList,file,
+                                                                                     moving_window_size=windowSize,
+                                                                                     threshold=threshold,
+                                                                                     syn_channels=syn_channel,
+                                                                                     l_freq=l,
+                                                                                     h_freq=h,
+                                                                                     l_bound=0.55,
+                                                                                     h_bound=3.55,tol=1)
+    elif do == 'wavelet':
+        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage_after_wavelet_transform(raw,
+                                                                                                     channelList,file,annotation,
+                                                                                                     moving_window_size=windowSize,
+                                                                                                     threshold=threshold,
+                                                                                                     syn_channels=syn_channel,
+                                                                                                     l_freq=l,
+                                                                                                     h_freq=h,
+                                                                                                     l_bound=0.55,
+                                                                                                     h_bound=3.55,tol=1)
+    
+    ###Taking out the first 100 seconds and the last 100 seconds###        
+    result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
+    result['Annotation'] = 'auto spindle'
+    result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
+    result = result[result.Onset > 100]
+
+
+
+    gold_standard = read_annotation(raw,annotation_file)
+    manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
+    auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
+    temp_dictionary[sub+day]=[manual_labels,auto_labels,discritized_time_intervals]
+    comparedRsult = manual_labels - auto_labels
+    sampling,labeling = sampling_FA_MISS_CR(comparedRsult,manual_labels,raw,annotation,
+                                                              discritized_time_intervals,
+                                                              sampling,labeling,old)
+        
+
+    return temp_dictionary,sampling,labeling
+    
+def fit_data(raw,exported_pipeline):
+    predictions=[];initial_time=100
+    while raw.last_samp/raw.info['sfreq'] - initial_time >100:
+        time1,time2=int(initial_time*raw.info['sfreq']),int((initial_time+3)*raw.info['sfreq'])
+        temp_data,_ = raw[:,time1:time2]
+        temp_data = temp_data.flatten()
+        psds,freqs = mne.time_frequency.psd_multitaper(raw,low_bias=True,
+                                    tmin=time1/raw.info['sfreq'],
+                                    tmax=time2/raw.info['sfreq'],proj=False,)
+        
+        psds = 10* np.log10(psds)
+        predict_data = np.concatenate((temp_data,
+                                        psds.max(1),
+                                        freqs[np.argmax(psds,1)]))
+        
+        predictions.append(exported_pipeline.predict(predict_data.reshape(1, -1)))
+        initial_time += 3
+    return predictions

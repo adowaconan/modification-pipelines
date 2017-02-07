@@ -25,11 +25,12 @@ l,h = (11,16);
 
 # over thresholds 
 windowSize=350;threshold=0.6;syn_channel=3
-with_sleep_stage={};without_sleep_stage={}
-for threshold in np.arange(0.05,0.96,0.01):
-    temp_with_sleep_stage={};temp_without_sleep_stage={};
-    with_stage_samples=[];with_stage_label=[]
-    without_stage_samples=[];without_stage_label=[]
+with_sleep_stage,without_sleep_stage,wavelet={},{},{}
+for threshold in np.arange(0.05,1.05,0.1):
+    temp_with_sleep_stage,temp_without_sleep_stage,temp_wavelet={},{},{};
+    with_stage_samples,with_stage_label=[],[]
+    without_stage_samples,without_stage_label=[],[]
+    with_stage_wavelet_samples,with_stage_wavelet_label=[],[]
     for file in list_file_to_read:
         sub = file.split('_')[0]
         if int(sub[3:]) >= 11:
@@ -59,8 +60,8 @@ for threshold in np.arange(0.05,0.96,0.01):
                                                                                                      syn_channels=syn_channel,
                                                                                                      l_freq=l,
                                                                                                      h_freq=h,
-                                                                                                     l_bound=0.55,
-                                                                                                     h_bound=3.55,tol=1)
+                                                                                                     l_bound=0.5,
+                                                                                                     h_bound=3.0,tol=1)
             
             ###Taking out the first 100 seconds and the last 100 seconds###        
             result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
@@ -87,8 +88,8 @@ for threshold in np.arange(0.05,0.96,0.01):
                                                                                                      syn_channels=syn_channel,
                                                                                                      l_freq=l,
                                                                                                      h_freq=h,
-                                                                                                     l_bound=0.55,
-                                                                                                     h_bound=3.55,tol=1)
+                                                                                                     l_bound=0.5,
+                                                                                                     h_bound=3.0,tol=1)
             
             ###Taking out the first 100 seconds and the last 100 seconds###        
             result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
@@ -109,13 +110,46 @@ for threshold in np.arange(0.05,0.96,0.01):
                                                                       without_stage_samples,
                                                                       without_stage_label,old)
             
+            
+            time_find,mean_peak_power,Duration,peak_time,peak_at=eegPinelineDesign.spindle_validation_with_sleep_stage_after_wavelet_transform(raw,
+                                                                                                     channelList,file,annotation,
+                                                                                                     moving_window_size=windowSize,
+                                                                                                     threshold=threshold,
+                                                                                                     syn_channels=syn_channel,
+                                                                                                     l_freq=l,
+                                                                                                     h_freq=h,
+                                                                                                     l_bound=0.5,
+                                                                                                     h_bound=3.0,tol=1)
+            
+            ###Taking out the first 100 seconds and the last 100 seconds###        
+            result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
+            result['Annotation'] = 'auto spindle'
+            result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
+            result = result[result.Onset > 100]
+            
+            
+            
+            gold_standard = eegPinelineDesign.read_annotation(raw,annotation_file)
+            manual_labels = eegPinelineDesign.discritized_onset_label_manual(raw,gold_standard,3)
+            auto_labels,discritized_time_intervals = eegPinelineDesign.discritized_onset_label_auto(raw,result,3)
+            temp_wavelet[sub+day]=[manual_labels,auto_labels,discritized_time_intervals]
+            comparedRsult = manual_labels - auto_labels
+            with_stage_wavelet_samples,with_stage_wavelet_label = sampling_FA_MISS_CR(comparedRsult,manual_labels,raw,annotation,
+                                                                      discritized_time_intervals,
+                                                                      with_stage_wavelet_samples,with_stage_wavelet_label,old)
+            
         else:
             print(sub+day+'no annotation')
-    with_sleep_stage[threshold]=temp_with_sleep_stage;without_sleep_stage[threshold]=temp_without_sleep_stage
+    with_sleep_stage[threshold]=temp_with_sleep_stage;
+    without_sleep_stage[threshold]=temp_without_sleep_stage
+    wavelet[threshold]=temp_wavelet
+
     pickle.dump(with_stage_samples,open("temp_data\\%.2f_samples_with.p"%threshold,"wb"))
     pickle.dump(with_stage_label,  open("temp_data\\%.2f_labels_with.p" %threshold,"wb"))
     pickle.dump(without_stage_samples,open("temp_data\\%.2f_samples_without.p"%threshold,"wb"))
     pickle.dump(without_stage_label,  open("temp_data\\%.2f_labels_without.p" %threshold,"wb"))
+    pickle.dump(with_stage_wavelet_samples,open("temp_data\\%.2f_samples_with_wavelet.p"%threshold,"wb"))
+    pickle.dump(with_stage_wavelet_label,open("temp_data\\%.2f_labels_with_wavelet.p"%threshold,"wb"))
 
 over_threshold={'with':with_sleep_stage,'without':without_sleep_stage}
 pickle.dump( over_threshold, open( "over_threshold.p", "wb" ) )
