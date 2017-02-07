@@ -15,23 +15,8 @@ warnings.filterwarnings("ignore")
 import os
 import pandas as pd
 import re
-import json
 import scipy
-from sklearn.linear_model import LogisticRegression
-from sklearn.decomposition import PCA,FastICA
-from sklearn.pipeline import Pipeline,make_pipeline
-from scipy.fftpack import fft,ifft
 import math
-from sklearn.metrics import classification_report,accuracy_score,confusion_matrix
-from scipy.signal import spectrogram,find_peaks_cwt,butter, lfilter
-from mne.preprocessing.ica import ICA
-from sklearn.metrics import precision_recall_curve
-from sklearn.metrics import average_precision_score
-from sklearn.cross_validation import train_test_split,ShuffleSplit
-from sklearn.preprocessing import label_binarize,scale
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.svm import SVC
-from sklearn.preprocessing import label_binarize,StandardScaler
 from mne.time_frequency import psd_multitaper
 
 #from obspy.signal.filter import bandpass
@@ -690,7 +675,16 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,major
     raw.filter(lowCut,highCut,l_trans_bandwidth=0.1)
     channelList = ['F3','F4','C3','C4','O1','O2']
     raw.pick_channels(channelList)
-    time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at=get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=mul,syn_channels=majority,l_freq=lowCut,h_freq=highCut,l_bound=0.5,h_bound=2)
+    time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at=get_Onest_Amplitude_Duration_of_spindles(raw,
+                                                                                                                 channelList,
+                                                                                                                 file_to_read,
+                                                                                                                 moving_window_size=200,
+                                                                                                                 threshold=mul,
+                                                                                                                 syn_channels=majority,
+                                                                                                                 l_freq=lowCut,
+                                                                                                                 h_freq=highCut,
+                                                                                                                 l_bound=0.5,
+                                                                                                                 h_bound=2)
     
     print('finish loading data')
     file2 = pd.read_csv(validation_file,sep=',')
@@ -818,7 +812,8 @@ def trimmed_std(data,percentile):
     low = int(percentile * len(temp))
     high = int((1. - percentile) * len(temp))
     return temp[low:high].std(ddof=0)
-def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
+def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,
+                                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
     mul=threshold;nn=3.5
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -1115,7 +1110,8 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
     
         
     return time_find,mean_peak_power,Duration,peak_time,peak_at
-def spindle_validation_with_sleep_stage(raw,channelList,file_to_read,annotations,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
+def spindle_validation_with_sleep_stage(raw,channelList,file_to_read,annotations,moving_window_size=200,threshold=.9,
+                                        syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
     nn=3.5
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -1577,7 +1573,7 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
             #print(len(a))
             samples.append(a)
             label.append(c)
-    """
+    
     b = abs(len(idx_miss) - len(idx_FA))
     if b > 0:
         for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_CR][:b]):
@@ -1595,7 +1591,7 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
                 #print(len(a))
                 samples.append(a)
                 label.append(c)
-    """
+    
     return samples,label
 def data_gathering_pipeline(temp_dictionary,
                             sampling,
@@ -1612,8 +1608,8 @@ def data_gathering_pipeline(temp_dictionary,
                                                                                                  syn_channels=syn_channel,
                                                                                                  l_freq=l,
                                                                                                  h_freq=h,
-                                                                                                 l_bound=0.55,
-                                                                                                 h_bound=3.55,tol=1)
+                                                                                                 l_bound=0.5,
+                                                                                                 h_bound=3.0,tol=1)
     elif do == 'without_stage':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
                                                                                      channelList,file,
@@ -1622,8 +1618,8 @@ def data_gathering_pipeline(temp_dictionary,
                                                                                      syn_channels=syn_channel,
                                                                                      l_freq=l,
                                                                                      h_freq=h,
-                                                                                     l_bound=0.55,
-                                                                                     h_bound=3.55,tol=1)
+                                                                                     l_bound=0.5,
+                                                                                                 h_bound=3.0,tol=1)
     elif do == 'wavelet':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage_after_wavelet_transform(raw,
                                                                                                      channelList,file,annotation,
@@ -1632,8 +1628,8 @@ def data_gathering_pipeline(temp_dictionary,
                                                                                                      syn_channels=syn_channel,
                                                                                                      l_freq=l,
                                                                                                      h_freq=h,
-                                                                                                     l_bound=0.55,
-                                                                                                     h_bound=3.55,tol=1)
+                                                                                                     l_bound=0.5,
+                                                                                                 h_bound=3.0,tol=1)
     
     ###Taking out the first 100 seconds and the last 100 seconds###        
     result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
@@ -1654,9 +1650,10 @@ def data_gathering_pipeline(temp_dictionary,
         
 
     return temp_dictionary,sampling,labeling
-    
-def fit_data(raw,exported_pipeline):
-    predictions=[];initial_time=100
+
+from sklearn.metrics import roc_auc_score
+def fit_data(raw,exported_pipeline,annotation_file,cv):
+    data=[];initial_time=100
     while raw.last_samp/raw.info['sfreq'] - initial_time >100:
         time1,time2=int(initial_time*raw.info['sfreq']),int((initial_time+3)*raw.info['sfreq'])
         temp_data,_ = raw[:,time1:time2]
@@ -1670,6 +1667,17 @@ def fit_data(raw,exported_pipeline):
                                         psds.max(1),
                                         freqs[np.argmax(psds,1)]))
         
-        predictions.append(exported_pipeline.predict(predict_data.reshape(1, -1)))
+        data.append(predict_data)
         initial_time += 3
+        
+    
+    data = np.array(data[:-1])
+    gold_standard = read_annotation(raw,annotation_file)
+    manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
+
+    predictions = []
+    for idx, _ in cv.split(data):
+        predicting_data = data[idx,:]
+        predictions.append(roc_auc_score(manual_labels[idx],
+                      exported_pipeline.predict(predicting_data)))
     return predictions
