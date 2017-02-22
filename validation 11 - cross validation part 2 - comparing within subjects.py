@@ -122,7 +122,10 @@ for file in list_file_to_read:
         print(sub+day+'no annotation')
         
 pickle.dump([all_detections,all_predictions],open("model comparions.p","wb"))
-"""
+
+result = pickle.load(open("model comparions.p","rb"))
+all_detections,all_predictions = result
+
 fig, ax = plt.subplots(figsize=(16,16));cnt = 0
 xx,yy,xerr,ylabel = [],[],[],[]
 for keys, item in all_predictions.items():
@@ -134,18 +137,89 @@ for keys, item in all_predictions.items():
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',
-            label='individual performance in a machine learning model:')
+            label='individual performance')
 
 ax.axvline(xx.mean(),
-           label='average performance of machine learning model: %.3f'%xx.mean())
+           label='average performance across subjects: %.3f'%xx.mean())
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),
             alpha=0.3,color='blue')
 _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=ylabel,
         xlabel='Area under the curve on predicting spindles and non spindles',
         ylabel='Subjects',
-         title='Individual cross validation results:\ncv=10',
+         title='Individual cross validation results by random forest:\ncv=10',
         ylim=(-0.5,len(ylabel)+0.5))
 _=ax.legend(loc='best')
-#fig.savefig('individual performance.png')
-"""
+fig.savefig('individual performance machine learning.png')
+
+fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+xx,yy,xerr,ylabel = [],[],[],[]
+for keys, item in all_detections.items():
+    yy.append(cnt)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',
+            label='individual performance')
+
+ax.axvline(xx.mean(),
+           label='average performance across subjects: %.3f'%xx.mean())
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),
+            alpha=0.3,color='blue')
+_=ax.set(yticks = np.arange(len(ylabel)),yticklabels=ylabel,
+        xlabel='Area under the curve on predicting spindles and non spindles',
+        ylabel='Subjects',
+         title='Individual cross validation results by signal processing:\ncv=10',
+        ylim=(-0.5,len(ylabel)+0.5))
+_=ax.legend(loc='best')
+fig.savefig('individual performance signal processing.png')
+
+# put them together
+fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+xx,yy,xerr,ylabel = [],[],[],[]
+for keys, item in all_predictions.items():
+    yy.append(cnt)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+sortIdx = np.argsort(xx)
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',
+            label='individual performance')
+
+ax.axvline(xx.mean(),
+           label='random forest performance: %.3f'%xx.mean())
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),
+            alpha=0.3,color='blue')
+_=ax.set(yticks = np.arange(len(ylabel)),yticklabels=ylabel,
+        xlabel='Area under the curve on predicting spindles and non spindles',
+        ylabel='Subjects',
+         title='Individual model comparison results:\ncv=10',
+        ylim=(-0.5,len(ylabel)+0.5))
+
+xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
+for keys, item in all_detections.items():
+    yy.append(cnt)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
+            label='individual performance')
+
+ax.axvline(xx.mean(),
+           label='thresholding performance: %.3f'%xx.mean(),color='red')
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),
+            alpha=0.3,color='red')
+
+_=ax.legend(loc='best')
+fig.savefig('individual performance.png')
