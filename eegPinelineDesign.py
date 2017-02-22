@@ -18,6 +18,8 @@ import re
 import scipy
 import math
 from mne.time_frequency import psd_multitaper
+from sklearn.model_selection import KFold
+from sklearn.metrics import confusion_matrix,accuracy_score,roc_curve,roc_auc_score
 
 #from obspy.signal.filter import bandpass
 
@@ -919,6 +921,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         except:
             pass
     return time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at
+
 def recode_annotation(x):
     if re.compile(': w',re.IGNORECASE).search(x):
         return 0
@@ -1344,8 +1347,8 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
     return time_find,mean_peak_power,Duration,peak_time,peak_at
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
-        spindle_start = spindle
-        spindle_end   = spindle + 2
+        spindle_start = spindle - 0.5
+        spindle_end   = spindle + 1.5
         a =  np.logical_or((intervalCheck(time_interval,spindle_start)),
                            (intervalCheck(time_interval,spindle_end)))
         return a
@@ -1681,3 +1684,85 @@ def fit_data(raw,exported_pipeline,annotation_file,cv):
         predictions.append(roc_auc_score(manual_labels[idx],
                       exported_pipeline.predict(predicting_data)))
     return predictions
+def compute_measures(dictionary_data, label='without',plot_flag=False,n_folds=10):
+    random.seed(12345)
+    df_accuracy=[];df_confusion_matrix=[];df_fpr=[];df_tpr=[];df_AUC=[];
+    thresholds = np.sort(list(dictionary_data[label].keys()))
+    for threshold in thresholds:
+        temp_data = dictionary_data[label][threshold]
+        manu_scores=[];auto_scores=[]
+        for sub,data in temp_data.items():
+            manu,auto,time_intervals = data
+            manu_scores.append(manu)
+            auto_scores.append(auto)
+
+        # shuffle
+        manu_scores = np.concatenate(manu_scores)
+        auto_scores = np.concatenate(auto_scores)
+
+
+        kf = KFold(n_splits=n_folds,random_state=12345,shuffle=True)
+
+        # here are the measures of performance:
+        temp_accuracy=[];temp_confusion_matrix = [];
+        temp_fpr=[];temp_tpr=[];temp_AUC=[];
+        ### end of measurs ###
+
+        for train_index, test_index in kf.split(auto_scores,manu_scores):
+            temp_manu = manu_scores[train_index]
+            temp_auto = auto_scores[train_index]
+            temp_accuracy.append(accuracy_score(temp_manu,temp_auto))
+            temp_confusion_matrix.append(confusion_matrix(temp_manu,temp_auto))
+            fpr,tpr,T = roc_curve(temp_manu,temp_auto)
+            temp_fpr.append(fpr)
+            temp_tpr.append(tpr)
+            temp_AUC.append(roc_auc_score(temp_manu,temp_auto))
+        ### save measures ###
+        df_accuracy.append(temp_accuracy)
+        df_confusion_matrix.append(temp_confusion_matrix)
+        df_fpr.append(temp_fpr)
+        df_tpr.append(temp_tpr)
+        df_AUC.append(temp_AUC)
+        
+        
+    if plot_flag:
+        df_plot={}
+        df_plot['accuracy']=np.array(df_accuracy)
+        df_plot['confusion_matrix']=np.array(df_confusion_matrix)
+        df_plot['fpr']=np.array(df_fpr)
+        df_plot['tpr']=np.array(df_tpr)
+        df_plot['AUC']=np.array(df_AUC)
+        df_plot['thresholds']=np.array(thresholds)
+        return df_plot
+    else:
+        return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,thresholds
+        
+def detection_pipeline_crossvalidation(raw,channelList,file,annotation,windowSize,threshold,syn_channel,l,h,annotation_file):
+    time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,
+                                                                                             channelList,file,annotation,
+                                                                                             moving_window_size=windowSize,
+                                                                                             threshold=threshold,
+                                                                                             syn_channels=syn_channel,
+                                                                                             l_freq=l,
+                                                                                             h_freq=h,
+                                                                                             l_bound=0.55, h_bound=2.2,tol=1)
+    ### Taking out the first 100 seconds and the last 100 seconds ###      
+    result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
+    result['Annotation'] = 'auto spindle'
+    result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
+    result = result[result.Onset > 100]
+    #Time_ = result.Onset.values 
+
+    #anno = annotation[annotation.Annotation == 'spindle']['Onset']
+    gold_standard = read_annotation(raw,annotation_file)
+    manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
+    auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
+                                                                                               
+    raw.close()  
+    temp_auc = []
+    for ii in range(10):
+        idx = np.arange(len(manual_labels))
+        idx = np.random.choice(idx,round(len(idx) * .9),replace=False)
+        detected,truth = auto_labels[idx],manual_labels[idx]
+        temp_auc.append(roc_auc_score(truth,detected))
+    return temp_auc
