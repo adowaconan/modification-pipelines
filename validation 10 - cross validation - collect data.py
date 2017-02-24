@@ -20,7 +20,7 @@ channelList = ['F3','F4','C3','C4','O1','O2']
 list_file_to_read = [files for files in file_in_fold if ('fif' in files) and ('nap' in files)]
 annotation_in_fold=[files for files in file_in_fold if ('txt' in files) and ('annotations' in files)]
 windowSize=350;threshold=0.6;syn_channel=3
-l,h = (11,16);
+l,h = (8,16);
 
 
 # over thresholds 
