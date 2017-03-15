@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Mar 13 17:58:54 2017
-
 @author: ning
 """
 import os
@@ -66,7 +65,7 @@ def discritized_onset_label_manual(raw,df,spindle_segment):
             if spindle_comparison(time_interval,spindle,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels
-def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,labels,fmin=8,fmax=16):
+def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,labels,channelList,fmin=11,fmax=16):
     # make events
     event_array = mne.make_fixed_length_events(raw,id=1,duration=float(duration))
     event_array[:,-1] = np.arange(1,len(event_array)+1)
@@ -94,7 +93,7 @@ def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_thres
     
     
     epochFeatures = {name:[] for name in features}
-    connection=[];time_list=[]
+    time_list=[]
     con_methods=['coh','plv','pli']
     # the entire pipeline
     for ii,epoch_data in enumerate(epochs):
@@ -110,7 +109,7 @@ def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_thres
                                             )
         
         temp_connection = [temp_connection[:,:,0]]
-        time_list.append(epochs[str(ii+2)].events[0])
+        time_list.append(epochs[str(ii+2)].events[0][0])
         print('computing features for epoch %d'%(ii+1))
         #epochFeatures['time_stamp'].append
         epochFeatures['mean'].append(np.mean(epoch_data))
@@ -170,17 +169,31 @@ def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_thres
         con_res=dict()
         for method, c in zip(con_methods,temp_connection):
             con_res[method] = c
+        colors=plt.cm.rainbow(np.linspace(0,1,len(channelList)))
+        time_plot = np.linspace(epochs[str(ii+2)].events[0][0]/raw.info['sfreq'],
+                                       epochs[str(ii+2)].events[0][0]/raw.info['sfreq']+duration,
+                                              epoch_data.shape[1])
         for plv_threshold,pli_threshold,cc_threshold in zip(plv_threshold_set,pli_threshold_set,cc_threshold_set):
             thresholds = {'plv':plv_threshold,'pli':pli_threshold,'coh':cc_threshold}
             for jj, method in enumerate(con_methods):
-                fig = plt.figure(figsize=(16,16))
+                fig,ax = plt.subplots(figsize=(16,16),nrows=2)
                 mne.viz.plot_connectivity_circle(con_res[method]>thresholds[method],raw.ch_names,fig=fig,show=False,
-                                                 title='%s,%.2f,%s'%(method,thresholds[method],title_label),facecolor='black',textcolor='white',
+                                                 title='%s,threshold:%.2f,%s'%(method,thresholds[method],title_label),facecolor='black',textcolor='white',
                                                                      colorbar=False,fontsize_title=22,fontsize_names=22,
+                                                                     subplot=221,node_colors=colors,
                                                  )
                 adjecency_df = pd.DataFrame(np.array(con_res[method]>thresholds[method],dtype=int),columns=np.arange(1,7))
                 adjecency_df.to_csv('epoch_%s_%.2f\\epoch_%d_%.2f(%s).csv'%(method.upper(),duration,ii+1,thresholds[method],title_label))
                 
+                for kk,(name,color) in enumerate(zip(channelList,colors)):
+                    ax[1].plot(time_plot,epoch_data[kk,:],label=name,color=color)
+                ax[1].legend(loc='upper right')
+                plt.setp(plt.getp(ax[1], 'yticklabels'), color='w') #set yticklabels color
+                plt.setp(plt.getp(ax[1], 'xticklabels'), color='w') #set xticklabels color
+                ax[1].set_title('%.2f-%.2f sec %s'%(time_plot.min(),time_plot.max(),title_label),color='w')
+                ax[1].set_xlabel('Time',color='w')
+                ax[1].set_ylabel('$\mu$V',color='w')
+
                 fig.set_facecolor('black')
                 fig.savefig('epoch_%s_%.2f\\epoch_%d_%.2f(%s).png'%(method.upper(),duration,ii+1,thresholds[method],title_label),
                                                           facecolor=fig.get_facecolor(), edgecolor='none')
