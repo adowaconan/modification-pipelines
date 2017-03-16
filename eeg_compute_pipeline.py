@@ -65,13 +65,13 @@ def discritized_onset_label_manual(raw,df,spindle_segment):
             if spindle_comparison(time_interval,spindle,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels
-def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,labels,channelList,fmin=11,fmax=16):
+def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,labels,fmin=11,fmax=16):
     # make events
     event_array = mne.make_fixed_length_events(raw,id=1,duration=float(duration))
     event_array[:,-1] = np.arange(1,len(event_array)+1)
     event_array[:,1] = duration * raw.info['sfreq']
     # make epochs
-    tmin, tmax = -duration*0.2, duration-duration*0.2  #20% overlapping
+    tmin, tmax = -duration*0.2, duration #20% overlapping previous epoch
     epochs = mne.Epochs(raw,event_array,tmin=tmin,tmax=tmax,
                        baseline=None,preload=True,proj=False)
     sfreq = raw.info['sfreq']
@@ -169,15 +169,15 @@ def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_thres
         con_res=dict()
         for method, c in zip(con_methods,temp_connection):
             con_res[method] = c
-        colors=plt.cm.rainbow(np.linspace(0,1,len(channelList)))
-        time_plot = np.linspace(epochs[str(ii+2)].events[0][0]/raw.info['sfreq'],
+        colors=plt.cm.rainbow(np.linspace(0,1,len(raw.ch_names)))
+        time_plot = np.linspace(epochs[str(ii+2)].events[0][0]/raw.info['sfreq']-0.2*(epochs[str(ii+2)].events[0][0]/raw.info['sfreq']),
                                        epochs[str(ii+2)].events[0][0]/raw.info['sfreq']+duration,
                                               epoch_data.shape[1])
         for plv_threshold,pli_threshold,cc_threshold in zip(plv_threshold_set,pli_threshold_set,cc_threshold_set):
             thresholds = {'plv':plv_threshold,'pli':pli_threshold,'coh':cc_threshold}
             for jj, method in enumerate(con_methods):
-                fig,ax = plt.subplots(figsize=(16,16),nrows=2)
-                mne.viz.plot_connectivity_circle(con_res[method]>thresholds[method],raw.ch_names,fig=fig,show=False,
+                fig,ax = plt.subplots(figsize=(16,16))
+                mne.viz.plot_connectivity_circle(np.array(con_res[method]>thresholds[method],dtype=int),raw.ch_names,fig=fig,show=False,
                                                  title='%s,threshold:%.2f,%s'%(method,thresholds[method],title_label),facecolor='black',textcolor='white',
                                                                      colorbar=False,fontsize_title=22,fontsize_names=22,
                                                                      subplot=221,node_colors=colors,
@@ -185,14 +185,26 @@ def compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_thres
                 adjecency_df = pd.DataFrame(np.array(con_res[method]>thresholds[method],dtype=int),columns=np.arange(1,7))
                 adjecency_df.to_csv('epoch_%s_%.2f\\epoch_%d_%.2f(%s).csv'%(method.upper(),duration,ii+1,thresholds[method],title_label))
                 
-                for kk,(name,color) in enumerate(zip(channelList,colors)):
-                    ax[1].plot(time_plot,epoch_data[kk,:],label=name,color=color)
-                ax[1].legend(loc='upper right')
-                plt.setp(plt.getp(ax[1], 'yticklabels'), color='w') #set yticklabels color
-                plt.setp(plt.getp(ax[1], 'xticklabels'), color='w') #set xticklabels color
-                ax[1].set_title('%.2f-%.2f sec %s'%(time_plot.min(),time_plot.max(),title_label),color='w')
-                ax[1].set_xlabel('Time',color='w')
-                ax[1].set_ylabel('$\mu$V',color='w')
+                axes = fig.add_subplot(212)
+                ax   = fig.add_subplot(222)
+                for kk,(name,color) in enumerate(zip(raw.ch_names,colors)):
+                    ax.plot(time_plot,epoch_data[kk,:],label=name,color=color)
+                    band_pass_data = mne.filter.filter_data(epoch_data[kk,:],raw.info['sfreq'],fmin,fmax)
+                    axes.plot(time_plot,band_pass_data,label=name,color=color)
+                ax.legend(loc='upper right')
+                ax.set_title('%.2f-%.2f sec %s'%(time_plot.min(),time_plot.max(),title_label),color='w')
+                ax.set_xlabel('Time',color='w')
+                ax.set_ylabel('$\mu$V',color='w')
+                plt.setp(plt.getp(ax, 'yticklabels'), color='w') #set yticklabels color
+                plt.setp(plt.getp(ax, 'xticklabels'), color='w') #set xticklabels color
+                axes.legend(loc='upper right')
+                axes.set_title('band pass data %.2f-%.2f Hz %s'%(fmin,fmax,title_label),color='w')
+                axes.set_xlabel('Time',color='w')
+                axes.set_ylabel('$\mu$V',color='w')
+                plt.setp(plt.getp(axes, 'yticklabels'), color='w') #set yticklabels color
+                plt.setp(plt.getp(axes, 'xticklabels'), color='w') #set xticklabels color
+                
+                
 
                 fig.set_facecolor('black')
                 fig.savefig('epoch_%s_%.2f\\epoch_%d_%.2f(%s).png'%(method.upper(),duration,ii+1,thresholds[method],title_label),

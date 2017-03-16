@@ -60,8 +60,8 @@ for duration in epoch_set:
     event_array = mne.make_fixed_length_events(raw,id=1,duration=float(duration))
     #event_array[:,1] = duration * raw.info['sfreq']
     #event_array[:,-1] = np.arange(1,len(event_array)+1)
-    epochFeatures=compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,manual_labels,channelList)
+    epochFeatures=compute_plv_pli_cc(raw,duration,plv_threshold_set,pli_threshold_set,cc_threshold_set,manual_labels)
     if not os.path.exists('feature'):
         os.makedirs('feature')
-epochFeatures.to_csv('feature\\feature_%.2f.csv'%(duration))
+    epochFeatures.to_csv('feature\\feature_%.2f.csv'%(duration))
 
