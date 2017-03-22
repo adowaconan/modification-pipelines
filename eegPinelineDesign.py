@@ -757,13 +757,13 @@ def regressionline(intercept,s,x_range):
     except:
         y = intercept + s*x
     return y
-def epoch_activity(raw,picks,epoch_length=10):
+def epoch_activity(raw,picks,epoch_length=10,l=1,h=200):
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
     
      # preallocate
     alpha_C=[];DT_C=[];ASI=[];activity=[];ave_activity=[];slow_spindle=[];fast_spindle=[]
-    psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[]
+    psd_delta1=[];psd_delta2=[];psd_theta=[];psd_alpha=[];psd_beta=[];psd_gamma=[];target_spindle=[]
 
     print('calculating power spectral density')
     for ii,epch in enumerate(epochs):
@@ -780,6 +780,7 @@ def epoch_activity(raw,picks,epoch_length=10):
         temp_psd_gamma  = psds[np.where((f>=20))] # gamma band
         temp_slow_spindle = psds[np.where((f>=10) & (f<=12))]# slow spindle
         temp_fast_spindle = psds[np.where((f>=12) & (f<=14))]# fast spindle
+        temp_target_spindle = psds[np.where((f>=l) & (f<=h))]
 
         temp_activity = [temp_psd_delta1.mean(),
                          temp_psd_delta2.mean(),
@@ -797,11 +798,12 @@ def epoch_activity(raw,picks,epoch_length=10):
         activity.append(psds[:np.where(f<=20)[0][-1]])#zoom in to beta
         slow_spindle.append(temp_slow_spindle)
         fast_spindle.append(temp_fast_spindle)
+        target_spindle.append(temp_target_spindle)
         psd_delta1.append(temp_psd_delta1);psd_delta2.append(temp_psd_delta2)
         psd_theta.append(temp_psd_theta);psd_alpha.append(temp_psd_alpha)
         psd_beta.append(temp_psd_beta);psd_gamma.append(temp_psd_gamma)
     slow_range=f[np.where((f>=10) & (f<=12))];fast_range=f[np.where((f>=12) & (f<=14))]
-    return alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs
+    return target_spindle,alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs
 
 def mean_without_outlier(data):
     outlier_threshold = data.mean() + data.std()*3
@@ -1017,8 +1019,10 @@ def find_title_peak(x,y):
     #print(maxArg,idx_devia)
     return idx_devia,maxArg
     
-def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200,threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
-    nn=3.5
+def spindle_validation_step1(raw,channelList,moving_window_size=200,
+                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,
+                             l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5):
+    nn=higher_threshold
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
@@ -1113,10 +1117,10 @@ def spindle_validation_step1(raw,channelList,file_to_read,moving_window_size=200
     
         
     return time_find,mean_peak_power,Duration,peak_time,peak_at
-def spindle_validation_with_sleep_stage(raw,channelList,file_to_read,annotations,moving_window_size=200,threshold=.9,
-                                        syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
-    nn=3.5
+def spindle_validation_with_sleep_stage(raw,channelList,annotations,moving_window_size=200,threshold=.9,
+                                        syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5):
     
+    nn=higher_threshold
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
     peak_time={} #preallocate
@@ -1231,8 +1235,8 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
                                                                 threshold=.9,
                                                                 syn_channels=3,
                                                                 l_freq=0,h_freq=200,
-                                                                l_bound=0.5,h_bound=2,tol=1):
-    nn=3.5
+                                                                l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5):
+    nn=higher_threshold
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
@@ -1598,41 +1602,46 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
     return samples,label
 def data_gathering_pipeline(temp_dictionary,
                             sampling,
-                            labeling,do,sub,day,
-                             raw,channelList,
-                            file,windowSize,
-                            threshold,syn_channel,
-                            l,h,annotation,old,annotation_file):
+                            labeling,do='with_stage',sub='11',day='day1',
+                             raw=None,channelList=None,
+                            file=None,windowSize=500,
+                            threshold=0.6,syn_channel=3,
+                            l=1,h=40,annotation=None,old=True,annotation_file=None,higher_threshold=1.):
     if do == 'with_stage':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,
-                                                                                                 channelList,file,annotation,
+                                                                                                 channelList,annotation,
                                                                                                  moving_window_size=windowSize,
                                                                                                  threshold=threshold,
                                                                                                  syn_channels=syn_channel,
                                                                                                  l_freq=l,
                                                                                                  h_freq=h,
                                                                                                  l_bound=0.5,
-                                                                                                 h_bound=3.0,tol=1)
+                                                                                                 h_bound=3.0,tol=1,
+                                                                                                 higher_threshold=higher_threshold)
+        
     elif do == 'without_stage':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
-                                                                                     channelList,file,
+                                                                                     channelList,
                                                                                      moving_window_size=windowSize,
                                                                                      threshold=threshold,
                                                                                      syn_channels=syn_channel,
                                                                                      l_freq=l,
                                                                                      h_freq=h,
                                                                                      l_bound=0.5,
-                                                                                                 h_bound=3.0,tol=1)
+                                                                                    h_bound=3.0,tol=1,
+                                                                                    higher_threshold=higher_threshold)
+        
     elif do == 'wavelet':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage_after_wavelet_transform(raw,
-                                                                                                     channelList,file,annotation,
+                                                                                                     channelList,annotation,
                                                                                                      moving_window_size=windowSize,
                                                                                                      threshold=threshold,
                                                                                                      syn_channels=syn_channel,
                                                                                                      l_freq=l,
                                                                                                      h_freq=h,
                                                                                                      l_bound=0.5,
-                                                                                                 h_bound=3.0,tol=1)
+                                                                                                 h_bound=3.0,tol=1,
+                                                                                                 higher_threshold=higher_threshold)
     
     ###Taking out the first 100 seconds and the last 100 seconds###        
     result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
