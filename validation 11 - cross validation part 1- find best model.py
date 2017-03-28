@@ -2,7 +2,7 @@
 """
 Created on Tue Feb  7 13:12:36 2017
 
-@author: install
+@author: ning
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ import pandas as pd
 from sklearn import metrics
 os.chdir('D:\\NING - spindle\\training set')
 l,h=11,16
-folder='step_size_500_%d_%d\\'%(l,h)
+folder='step_size_500_%d_%dgetting_higher_threshold\\'%(l,h)
 # find the best threshold after we sampled the data
 print('find best threshold')
 """
@@ -27,21 +27,25 @@ type_ = 'with'
 df_with = eegPinelineDesign.compute_measures(over_threshold,type_,plot_flag=True)
 threshold = df_with['thresholds'][np.argmax(df_with['AUC'].mean(1))]  
 """
+
 with open('%sover_threshold.p'%folder,'rb') as h:
     over_threshold = pickle.load(h)
 type_ = 'with'
-threshold = 000;
-higher_threshold=000;                  
+df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,df_with = eegPinelineDesign.compute_two_thresholds(over_threshold,type_,plot_flag=False)
+best = df_with[df_with['mean_AUC']==df_with['mean_AUC'].max()]
+lower_threshold,higher_threshold=best['lower_threshold'].values[0],best['upper_threshold'].values[0]
+
 ### train the exported pipeline ###
-samples = pickle.load(open("%s%.2f-%.2f_samples_%s.p"%(folder,threshold,higher_threshold,type_),
+print('get data')
+samples = pickle.load(open("%s%.2f-%.2f_samples_%s.p"%(folder,lower_threshold,higher_threshold,type_),
                                 "rb"))
-label = pickle.load(open("%s%.2f-%.2f_labels_%s.p" %(folder,threshold,higher_threshold,type_),
+label = pickle.load(open("%s%.2f-%.2f_labels_%s.p" %(folder,lower_threshold,higher_threshold,type_),
                         "rb"))
 # set up for naive machine learning
-print('set up naive machine learning model')
-data,label,idx_row = np.array(samples),np.array(label),np.arange(0,len(label),1)
-for ii in range(100):
-    shuffle(idx_row)
+#print('set up naive machine learning model')
+#data,label,idx_row = np.array(samples),np.array(label),np.arange(0,len(label),1)
+#for ii in range(100):
+#    shuffle(idx_row)
 
 #data,label = data[idx_row,:],label[idx_row]
 #features = data
@@ -49,15 +53,18 @@ for ii in range(100):
 #training_features, testing_features, training_classes, testing_classes = \
 #    train_test_split(features, tpot_data['class'], random_state=42)
 data,label,idx_row = np.array(samples),np.array(label),np.arange(0,len(label),1)
+print('shuffle')
 for ii in range(100):
     shuffle(idx_row)
 data,label = data[idx_row,:],label[idx_row]
 X_train, X_test, y_train, y_test = train_test_split(data,label,train_size=0.95)
-tpot = TPOTClassifier(generations=5, population_size=20,
-                      verbosity=2,random_state=0,num_cv_folds=3 )
+print('model selection')
+tpot = TPOTClassifier(generations=10, population_size=25,
+                      verbosity=2,random_state=0,num_cv_folds=5,scoring='roc_auc' )
 tpot.fit(X_train,y_train)
 tpot.score(X_test,y_test)
 tpot.export('%s%s_tpot_exported_pipeline.py'%(folder,type_) )  
+print('finished model selection')
 """
 from sklearn.ensemble import VotingClassifier
 from sklearn.feature_selection import SelectFwe, f_classif

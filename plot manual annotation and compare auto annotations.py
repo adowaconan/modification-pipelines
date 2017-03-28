@@ -26,10 +26,11 @@ file_in_fold=eegPinelineDesign.change_file_directory('D:\\NING - spindle\\traini
 channelList = ['F3','F4','C3','C4','O1','O2']
 list_file_to_read = [files for files in file_in_fold if ('fif' in files) and ('nap' in files)]
 annotation_in_fold=[files for files in file_in_fold if ('txt' in files) and ('annotations' in files)]
-windowSize=500;threshold=0.45;syn_channel=3
+windowSize=500;threshold=0.4;syn_channel=3
 l,h = (11,16);
 low, high=11,16
-hh=2.5
+hh=3.4
+front=300;back=100;total=front+back
 if True:
     for file in list_file_to_read:
         sub = file.split('_')[0]
@@ -58,8 +59,8 @@ if True:
                                             syn_channels=syn_channel,l_freq=l,h_freq=h,higher_threshold=hh)
             result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
             result['Annotation'] = 'auto spindle'
-            result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
-            result = result[result.Onset > 100]
+            result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+            result = result[result.Onset > front]
             result.to_csv(sub+"_"+day_for_show+"auto_annotation.csv")
 
             
@@ -82,8 +83,8 @@ for file in list_file_to_read:
         raw = mne.io.read_raw_fif(file,preload=True)
         auto = pd.read_csv(sub+"_"+day_for_show+"auto_annotation.csv")
         manual_spindle = pd.read_csv(manual[0])
-        manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
-        manual_spindle = manual_spindle[manual_spindle.Onset > 500]
+        manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+        manual_spindle = manual_spindle[manual_spindle.Onset > front]
         keyword = re.compile('spindle',re.IGNORECASE)
         gold_standard = {'Onset':[],'Annotation':[]}
         for ii,row in manual_spindle.iterrows():
@@ -182,9 +183,9 @@ for ii in subjects:
                                         syn_channels=syn_channel,l_freq=slow[0],h_freq=slow[1],higher_threshold=hh)
         result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
         result['Annotation'] = 'auto spindle'
-        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
-        result = result[result.Onset > 500]    
-        slow_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - 600)]) 
+        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+        result = result[result.Onset > front]    
+        slow_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - total)]) 
     except:
         pass
 for ii in subjects:
@@ -203,12 +204,22 @@ for ii in subjects:
                                         syn_channels=syn_channel,l_freq=fast[0],h_freq=fast[1],higher_threshold=hh)
         result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
         result['Annotation'] = 'auto spindle'
-        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
-        result = result[result.Onset > 500]    
-        fast_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - 600)])
+        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+        result = result[result.Onset > front]    
+        fast_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - total)])
     except:
         pass        
         
         
         
-        
+fast_count = pd.DataFrame(fast_count,columns=['subject','fast spindle count','fast spindle density'])        
+slow_count = pd.DataFrame(slow_count,columns=['subject','slow spindle count','slow spindle density'])
+fast_count.to_csv('fast_spindle_info.csv')
+slow_count.to_csv('slow_spindle_info.csv')
+data = pd.read_clipboard()
+vars=['WM', 'REC1', 'REC2', 'Sleep Latency', 'Total Nap time',
+       'Spindle Density (Karen)', 'Spindle Count (Karen)',
+       'Slow Spindle Count (Ning)', 'Slow Spindle Density (Ning)',
+       'Fast Spindle Count (Ning)', 'Fast Spindle Density (Ning)',
+       'Cluster 1 % TSE', 'Cluster 2 % TSE', 'Cluster 3 % TSE']
+sns.pairplot(data,vars=['WM','Slow Spindle Count (Ning)'],diag_kind='kde')
