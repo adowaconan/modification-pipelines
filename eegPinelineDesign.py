@@ -1034,8 +1034,8 @@ def spindle_validation_step1(raw,channelList,moving_window_size=200,
         peak_time[names]=[]
         segment,_ = raw[ii,:]
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
-        mph = trim_mean(RMS[ii,front*sfreq:-back*sfreq],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
-        mpl = trim_mean(RMS[ii,front*sfreq:-back*sfreq],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+        mph = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+        mpl = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
         pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
 
         up = np.where(np.diff(pass_.astype(int))>0)
@@ -1067,8 +1067,8 @@ def spindle_validation_step1(raw,channelList,moving_window_size=200,
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     
-    mph = trim_mean(RMS_mean[front*sfreq:-back*sfreq],0.05) + threshold * RMS_mean.std()
-    mpl = trim_mean(RMS_mean[front*sfreq:-back*sfreq],0.05) + nn * RMS_mean.std()
+    mph = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + threshold * RMS_mean.std()
+    mpl = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + nn * RMS_mean.std()
     pass_ =RMS_mean > mph
     up = np.where(np.diff(pass_.astype(int))>0)
     down= np.where(np.diff(pass_.astype(int))<0)
@@ -1366,7 +1366,7 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
                            (intervalCheck(time_interval,spindle_end)))
         return a
 def discritized_onset_label_manual(raw,df,spindle_segment):
-    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment)
+    discritized_continuous_time = np.arange(300,raw.times[-1]-100,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -1379,7 +1379,7 @@ def discritized_onset_label_manual(raw,df,spindle_segment):
     return discritized_time_to_zero_one_labels
 def discritized_onset_label_auto(raw,df,spindle_segment):
     spindle_duration = df['Duration'].values
-    discritized_continuous_time = np.arange(100,raw.last_samp/raw.info['sfreq']-100,step=spindle_segment)
+    discritized_continuous_time = np.arange(300,raw.times[-1]-100,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -1550,15 +1550,77 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
                     return [[],[]]
             else:
                 return [[],[]]
-def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritized_time_intervals,samples,label,old,
-                        front=300,back=100):
+#def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritized_time_intervals,samples,label,old,
+#                        front=300,back=100):
+#    idx_hit = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 1)))[0]
+#    idx_CR  = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 0)))[0]
+#    idx_miss= np.where(comparedRsult == 1)[0]
+#    idx_FA  = np.where(comparedRsult == -1)[0]
+#    raw_data, time = raw[:,front*raw.info['sfreq']:-back*raw.info['sfreq']]
+#    stages = annotation[annotation.Annotation.apply(stage_check)]
+#    
+#    On = stages[::2];Off = stages[1::2]
+#    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+#    if abs(np.diff(stage_on_off[0]) - 30) < 2:
+#        pass
+#    else:
+#        On = stages[1::2];Off = stages[::2]
+#        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+#
+#    for jj,(time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_miss]):
+#        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='miss', old=old)
+#
+#        if len(a) > 0:
+#            a = a.tolist()
+#            #print(len(a))
+#            samples.append(a)
+#            label.append(c)
+#
+#    for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_FA]):
+#
+#        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='fa', old=old)
+#        if len(a) > 0:
+#            a = a.tolist()
+#            #print(len(a))
+#            samples.append(a)
+#            label.append(c)
+#    
+#    b = abs(len(idx_miss) - len(idx_FA))
+#    if b > 0:
+#        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_CR][:b]):
+#            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='cr', old=old)
+#            if len(a) > 0:
+#                a = a.tolist()
+#                #print(len(a))
+#                samples.append(a)
+#                label.append(c)
+#    elif b < 0:
+#        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_hit][:b]):
+#            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='hit', old=old)
+#            if len(a) > 0:
+#                a = a.tolist()
+#                #print(len(a))
+#                samples.append(a)
+#                label.append(c)
+#    
+#    return samples,label
+def mark_stage_2_FA(discritized_time_intervals,stage_on_off,idx_FA):
+    t_idx=[]
+    for t1,t2 in discritized_time_intervals[idx_FA]:
+        a=[(t1 > np.array(stage_on_off)[:,0]).astype(int),(t2<np.array(stage_on_off)[:,1]).astype(int)]
+        a = np.array(a)
+        try:
+            t_idx.append(np.where(a.sum(0)==2)[0][0])
+        except:
+            pass
+    return np.unique(t_idx)
+def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritized_time_intervals,sample,label,front=300,back=100,):
     idx_hit = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 1)))[0]
     idx_CR  = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 0)))[0]
     idx_miss= np.where(comparedRsult == 1)[0]
     idx_FA  = np.where(comparedRsult == -1)[0]
-    raw_data, time = raw[:,front*raw.info['sfreq']:-back*raw.info['sfreq']]
     stages = annotation[annotation.Annotation.apply(stage_check)]
-    
+
     On = stages[::2];Off = stages[1::2]
     stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
     if abs(np.diff(stage_on_off[0]) - 30) < 2:
@@ -1566,44 +1628,33 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
     else:
         On = stages[1::2];Off = stages[::2]
         stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+    stop = raw.times[-1]-back
+    events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
 
-    for jj,(time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_miss]):
-        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='miss', old=old)
-
-        if len(a) > 0:
-            a = a.tolist()
-            #print(len(a))
-            samples.append(a)
-            label.append(c)
-
-    for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_FA]):
-
-        a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='fa', old=old)
-        if len(a) > 0:
-            a = a.tolist()
-            #print(len(a))
-            samples.append(a)
-            label.append(c)
+    epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
+    psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
+    psds = 10* np.log10(psds)
+    data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
+    freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
+    data = np.concatenate([data,psds,freqs],axis=2)
+    data = data.reshape(len(events),-1)
+    sample.append(data[idx_miss]);label.append(np.ones(len(idx_miss)))
+    sample.append(data[idx_FA]);label.append(np.zeros(len(idx_FA)))
     
-    b = abs(len(idx_miss) - len(idx_FA))
-    if b > 0:
-        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_CR][:b]):
-            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='cr', old=old)
-            if len(a) > 0:
-                a = a.tolist()
-                #print(len(a))
-                samples.append(a)
-                label.append(c)
-    elif b < 0:
-        for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_intervals[idx_hit][:b]):
-            a,c = sample_data(time_interval_1, time_interval_2, raw, raw_data, stage_on_off, key='hit', old=old)
-            if len(a) > 0:
-                a = a.tolist()
-                #print(len(a))
-                samples.append(a)
-                label.append(c)
-    
-    return samples,label
+    len_need = len(idx_FA) - len(idx_miss)
+    if len_need > 0:
+        try:
+            idx_hit_need = np.random.choice(idx_hit,size=len_need,replace=False)
+        except:
+            idx_hit_need = np.random.choice(idx_hit,size=len_need,replace=True)
+        sample.append(data[idx_hit_need])
+        label.append(np.ones(len(idx_hit_need)))
+    else:
+        idx_CR_nedd = np.random.choice(idx_CR,len_need,replace=False)
+        sample.append(data[idx_CR_nedd])
+        label.append(np.zeros(len(idx_CR_nedd)))
+    return sample,label
+
 def data_gathering_pipeline(temp_dictionary,
                             sampling,
                             labeling,do='with_stage',sub='11',day='day1',
@@ -1662,43 +1713,40 @@ def data_gathering_pipeline(temp_dictionary,
     auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
     temp_dictionary[sub+day]=[manual_labels,auto_labels,discritized_time_intervals]
     comparedRsult = manual_labels - auto_labels
-    sampling,labeling = sampling_FA_MISS_CR(comparedRsult,manual_labels,raw,annotation,
-                                                              discritized_time_intervals,
-                                                              sampling,labeling,old)
+    sampling,labeling = sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, 
+                                            discritized_time_intervals,sampling,labeling,front=300,back=100,)
         
 
     return temp_dictionary,sampling,labeling
 
 from sklearn.metrics import roc_auc_score
-def fit_data(raw,exported_pipeline,annotation_file,cv):
-    data=[];initial_time=100
-    while raw.last_samp/raw.info['sfreq'] - initial_time >100:
-        time1,time2=int(initial_time*raw.info['sfreq']),int((initial_time+3)*raw.info['sfreq'])
-        temp_data,_ = raw[:,time1:time2]
-        temp_data = temp_data.flatten()
-        psds,freqs = mne.time_frequency.psd_multitaper(raw,low_bias=True,
-                                    tmin=time1/raw.info['sfreq'],
-                                    tmax=time2/raw.info['sfreq'],proj=False,)
-        
-        psds = 10* np.log10(psds)
-        predict_data = np.concatenate((temp_data,
-                                        psds.max(1),
-                                        freqs[np.argmax(psds,1)]))
-        
-        data.append(predict_data)
-        initial_time += 3
-        
-    
-    data = np.array(data[:-1])
+def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False):
+    data=[];
+    stop = raw.times[-1]-300
+    e = mne.make_fixed_length_events(raw,1,start=100,stop = stop,duration=3,)
+    epochs = mne.Epochs(raw,e,1,tmin=0,tmax=3,proj=False,)
+    psds, freqs=psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
+    psds = 10* np.log10(psds)
+    data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
+    freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
+    data = np.concatenate([data,psds,freqs],axis=2)
+    data = data.reshape(len(e),-1)
     gold_standard = read_annotation(raw,annotation_file)
     manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
 
-    predictions = []
-    for idx, _ in cv.split(data):
-        predicting_data = data[idx,:]
-        predictions.append(roc_auc_score(manual_labels[idx],
-                      exported_pipeline.predict(predicting_data)))
-    return predictions
+    predictions = [];fpr,tpr=[],[];AUC=[]
+    for train, test in cv.split(data):
+        #exported_pipeline.fit(data[train,:],manual_labels[train])
+        predictions.append(exported_pipeline.predict(data[train]))
+        fp,tp,T = roc_curve(manual_labels[train],
+                      exported_pipeline.predict(data[train]))
+        AUC.append(roc_auc_score(manual_labels[train],
+                      exported_pipeline.predict(data[train,:])))
+        fpr.append(fp);tpr.append(tp)
+    if plot_flag:
+        return AUC,fpr,tpr,predictions
+    else:
+        return AUC
 def compute_measures(dictionary_data, label='without',plot_flag=False,n_folds=10):
     random.seed(12345)
     df_accuracy=[];df_confusion_matrix=[];df_fpr=[];df_tpr=[];df_AUC=[];
@@ -1816,7 +1864,7 @@ def compute_two_thresholds(dictionary_data, label='without',plot_flag=False,n_fo
     else:
         return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,result
         
-def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,threshold,higher_threshold,syn_channel,l,h,annotation_file,front=300,back=100):
+def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,threshold,higher_threshold,syn_channel,l,h,annotation_file,front=300,back=100,plot_flag=False):
     time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,channelList,annotation,moving_window_size=windowSize,threshold=threshold,
                                         syn_channels=syn_channel,l_freq=l,h_freq=h,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
                                         )
@@ -1833,10 +1881,15 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,thr
     auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
                                                                                                
     raw.close()  
-    temp_auc = []
+    temp_auc = [];fp,tp=[],[]
     for ii in range(10):
         idx = np.arange(len(manual_labels))
         idx = np.random.choice(idx,round(len(idx) * .9),replace=False)
         detected,truth = auto_labels[idx],manual_labels[idx]
         temp_auc.append(roc_auc_score(truth,detected))
-    return temp_auc
+        fpr,tpr,T = roc_curve(truth,detected)
+        fp.append(fpr);tp.append(tp)
+    if plot_flag:
+        return temp_auc,fp,tp
+    else:
+        return temp_auc

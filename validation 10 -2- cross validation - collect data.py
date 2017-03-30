@@ -25,10 +25,10 @@ if not os.path.exists(folder):
     os.makedirs(folder)
 
 # over thresholds 
-windowSize=500;threshold=0.6;syn_channel=3
+windowSize=500;6;syn_channel=3
 with_sleep_stage,without_sleep_stage,wavelet={},{},{}
-for threshold in np.arange(0.1,1.05,0.05):
-    for higher_threshold in np.arange(2,3.5,0.1):
+for threshold in np.arange(0.1,1.1,0.1):
+    for higher_threshold in np.arange(2,3.6,0.1):
         temp_with_sleep_stage,temp_without_sleep_stage,temp_wavelet={},{},{};
         with_stage_samples,with_stage_label=[],[]
         without_stage_samples,without_stage_label=[],[]
@@ -56,6 +56,7 @@ for threshold in np.arange(0.1,1.05,0.05):
                 raw.filter(low,high);print('finish preprocessing................')
                 ######## get one done #####with sleep stage info#####
                 print('with sleep stage info............')
+                print('take out first 300 seconds and last 100 seconds............')
                 temp_with_sleep_stage,with_stage_samples,with_stage_label=eegPinelineDesign.data_gathering_pipeline(temp_with_sleep_stage,
                                 with_stage_samples,
                                 with_stage_label,do='with_stage',sub=sub,day=day,raw=raw,channelList=channelList,
@@ -102,8 +103,8 @@ for threshold in np.arange(0.1,1.05,0.05):
         pickle.dump(with_stage_wavelet_label,open("temp_data\\%.2f_labels_with_wavelet.p"%threshold,"wb"))
         """
 
-over_threshold={'with':with_sleep_stage}#,'without':without_sleep_stage}
-pickle.dump( over_threshold, open( "%sover_threshold.p"%folder, "wb" ) )
+        over_threshold={'with':with_sleep_stage}#,'without':without_sleep_stage}
+        pickle.dump( over_threshold, open( "%sover_threshold.p"%folder, "wb" ) )
 
 """
 from random import shuffle
