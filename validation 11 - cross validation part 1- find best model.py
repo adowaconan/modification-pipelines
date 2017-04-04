@@ -58,10 +58,10 @@ print('shuffle')
 for ii in range(100):
     shuffle(idx_row)
 data,label = data[idx_row,:],label[idx_row]
-X_train, X_test, y_train, y_test = train_test_split(data,label,train_size=0.95)
+X_train, X_test, y_train, y_test = train_test_split(data,label,train_size=0.80)
 print('model selection')
 tpot = TPOTClassifier(generations=10, population_size=25,
-                      verbosity=2,random_state=0,num_cv_folds=5,scoring='roc_auc' )
+                      verbosity=2,random_state=373849,num_cv_folds=5,scoring='roc_auc' )
 tpot.fit(X_train,y_train)
 tpot.score(X_test,y_test)
 tpot.export('%s%s_tpot_exported_pipeline.py'%(folder,type_) )  

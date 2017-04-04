@@ -29,7 +29,7 @@ from sklearn.model_selection import train_test_split
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import KFold
-
+from sklearn.tree import DecisionTreeClassifier
 
 import time
 
@@ -53,8 +53,15 @@ df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,df_with = ee
 best = df_with[df_with['mean_AUC']>round(df_with['mean_AUC'].max(),2)]
 best = best[best['mean_accuracy'] == best['mean_accuracy'].max()]
 lower_threshold,higher_threshold=best['lower_threshold'].values[0],best['upper_threshold'].values[0]
-print('find best threshold: %.2f, %.2f'%(lower_threshold,higher_threshold))                    
-### train the exported pipeline ###
+print('find best threshold: %.2f, %.2f'%(lower_threshold,higher_threshold)) 
+
+
+print('model comparison')
+cv = KFold(n_splits=10,random_state=18374,shuffle=True)
+
+all_predictions_ML,all_detections,all_predictions_randomforest={},{},{}
+running_time_ML,running_time_signal_process,running_time_randomforest={},{},{}
+#exported_pipeline = joblib.load('%smy_model.pkl'%folder)
 print('get data')
 samples = pickle.load(open("%s%.2f-%.2f_samples_%s.p"%(folder,lower_threshold,higher_threshold,type_),
                                 "rb"))
@@ -70,11 +77,6 @@ for ii in range(100):
 data,label = data[idx_row,:],label[idx_row]
 features = data
 tpot_data=pd.DataFrame({'class':label},columns=['class'])
-
-# train the machine learning model  
-exported_pipeline = make_pipeline(
-    GradientBoostingClassifier(learning_rate=0.56, max_features=0.56, n_estimators=500,random_state=1093)
-)  
 kf = KFold(n_splits=10,random_state=556,shuffle=True)
 results,auc=[],[]
 cnt = 0
@@ -83,113 +85,43 @@ fp,tp=[],[]
 for train_index, test_index in kf.split(features):
     training_features, testing_features = features[train_index],features[test_index]
     training_classes, testing_classes = tpot_data['class'].values[train_index],tpot_data['class'].values[test_index]
-
+    exported_pipeline = make_pipeline(
+    make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
+    GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
+        ) 
     exported_pipeline.fit(training_features, training_classes)
-    results.append(exported_pipeline.predict(testing_features))
-    fpr, tpr, thresholds = metrics.roc_curve(testing_classes,np.array(results[cnt]).reshape(-1,))
-    auc.append(metrics.roc_auc_score(testing_classes,np.array(results[cnt]).reshape(-1,)))
+    results.append(exported_pipeline.predict_proba(testing_features)[:,1])
+    fpr, tpr, thresholds = metrics.roc_curve(testing_classes,exported_pipeline.predict_proba(testing_features)[:,1])
+    auc.append(metrics.roc_auc_score(testing_classes,exported_pipeline.predict_proba(testing_features)[:,1]))
     #ax.plot(fpr,tpr,label='%s,Area under the curve: %.3f'%(type_,auc[cnt]))
     fp.append(fpr);tp.append(tpr)
+    print('get one done')
     cnt += 1
-fpr = np.mean(fp,0);tpr=np.mean(tp,0)
+print('done')
+#from sklearn.externals import joblib
+#pickle.dump(exported_pipeline, open('%smy_model.pkl'%folder,'wb'))
+#exported_pipeline = joblib.load('%smy_model.pkl'%folder)
+pickle.dump([results,auc,fp,tp],open("%slong process.p"%folder,"wb"))
+dd = pickle.load(open('%slong process.p'%folder,'rb'))
+results,auc,fp,tp= dd
+select = np.random.choice(np.arange(10),size=1)[0]
+fpr = fp[select];tpr=tp[select]
 fig,ax = plt.subplots(figsize=(16,16))
-ax.plot(fpr,tpr,label='Area under the curve: %.3f'%(np.mean(auc)))
+ax.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(auc),np.std(auc)))
 ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax.set(xlabel='false alarm rate',ylabel='true positive rate',
        xlim=[0.,1.],ylim=[0.,1.05])
 ax.set_title('Gradient Boosting Classifier model to classify spindles and non spindles',fontsize=22,fontweight="bold")
-ax.annotate('"GradientBoostingClassifier": learning_rate=0.56,\n               max_features=0.56,\n               n_estimators=500\n               "K-fold": 10, shuffle',xy=(0.04,0.85))
+#ax.annotate(exported_pipeline.named_steps,xy=(0.03,0.77),size=8)
 legend=ax.legend(loc='upper left',frameon=False)
 frame = legend.get_frame()
 frame.set_facecolor('None')
 fig.savefig('%sGBC.png'%folder)
-## KNN
-#KNN = make_pipeline(
-#    make_union(
-#        FunctionTransformer(lambda X: X),
-#        FunctionTransformer(lambda X: X)
-#    ),
-#    SelectFwe(alpha=0.05, score_func=f_classif),
-#    KNeighborsClassifier(n_neighbors=5, weights="distance")
-#)
-#kf = KFold(n_splits=10,random_state=123,shuffle=True)
-#results,auc=[],[]
-#cnt = 0
-#print('machine learning model KNN and cross validation by 10 folds') 
-#fp,tp=[],[]   
-#for train_index, test_index in kf.split(features):
-#    training_features, testing_features = features[train_index],features[test_index]
-#    training_classes, testing_classes = tpot_data['class'].values[train_index],tpot_data['class'].values[test_index]
-#
-#    KNN.fit(training_features, training_classes)
-#    results.append(KNN.predict(testing_features))
-#    fpr, tpr, thresholds = metrics.roc_curve(testing_classes,np.array(results[cnt]).reshape(-1,))
-#    auc.append(metrics.roc_auc_score(testing_classes,np.array(results[cnt]).reshape(-1,)))
-#    #ax.plot(fpr,tpr,label='%s,Area under the curve: %.3f'%(type_,auc[cnt]))
-#    fp.append(fpr);tp.append(tpr)
-#    cnt += 1
-#fpr = np.mean(fp,0);tpr=np.mean(tp,0)
-#fig,ax = plt.subplots(figsize=(16,16))
-#ax.plot(fpr,tpr,label='Area under the curve: %.3f'%(np.mean(auc)))
-#ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-#ax.set(xlabel='false alarm rate',ylabel='true positive rate',
-#       xlim=[0.,1.],ylim=[0.,1.05])
-#ax.set_title('KNeightbors classifier model to classify spindles and non spindles',fontsize=22,fontweight="bold")
-#ax.annotate('Pipeline: "feature selection": f_classifier\n               "KNN": 5 neighbors, 20 leaves, \n                           metric: minkowski, \n                           weights: distance\n               "K-fold": 10, shuffle',xy=(0.04,0.85))
-#legend=ax.legend(loc='upper left',frameon=False)
-#frame = legend.get_frame()
-#frame.set_facecolor('None')
-#fig.savefig('%sKNN.png'%folder)
-#
-## randomforest
-#
-#randomforest = make_pipeline(
-#        SelectFwe(alpha=0.05, score_func=f_classif),
-#        make_union(VotingClassifier([("est", BernoulliNB(alpha=36.0, binarize=0.21, fit_prior=True))]), 
-#                   FunctionTransformer(lambda X: X)),
-#        RandomForestClassifier(n_estimators=500)
-#    )
-#results,auc=[],[]
-#cnt = 0
-#fp,tp=[],[]
-#print('machine learning model randomforest and cross validation by 10 folds')    
-#for train_index, test_index in kf.split(features):
-#    training_features, testing_features = features[train_index],features[test_index]
-#    training_classes, testing_classes = tpot_data['class'].values[train_index],tpot_data['class'].values[test_index]
-#
-#    randomforest.fit(training_features, training_classes)
-#    results.append(randomforest.predict(testing_features))
-#    fpr, tpr, thresholds = metrics.roc_curve(testing_classes,np.array(results[cnt]).reshape(-1,))
-#    auc.append(metrics.roc_auc_score(testing_classes,np.array(results[cnt]).reshape(-1,)))
-#    #ax.plot(fpr,tpr,label='%s,Area under the curve: %.3f'%(type_,auc[cnt]))
-#    fp.append(fpr);tp.append(tpr)
-#    cnt += 1
-#fpr = np.mean(fp,0);tpr=np.mean(tp,0)
-#fig,ax = plt.subplots(figsize=(16,16))
-#ax.plot(fpr,tpr,label='Area under the curve: %.3f'%(np.mean(auc)))
-#ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-#ax.set(xlabel='false alarm rate',ylabel='true positive rate',
-#       xlim=[0.,1.],ylim=[0.,1.05])
-#ax.set_title('Rondom forest model to classify spindles and non spindles',fontsize=22,fontweight="bold")
-#ax.annotate('Pipeline: "feature selection": f_classifier\n               "Random forest": 500 estimators',xy=(0.04,0.85))
-#legend=ax.legend(loc='upper left',frameon=False)
-#frame = legend.get_frame()
-#frame.set_facecolor('None')
-#fig.savefig('%srandomforest.png'%folder)
-
-
-
-
-
-### applying this machine learning model to our data ###
-### also compare to signal processing method in the individual level ###
-print('model comparison')
-from sklearn.model_selection import ShuffleSplit
-cv = ShuffleSplit(n_splits=10, test_size=0.2, random_state=0)
-
-all_predictions_KNN,all_detections,all_predictions_randomforest={},{},{}
-running_time_KNN,running_time_signal_process,running_time_randomforest={},{},{}
-
+exported_pipeline = make_pipeline(
+    make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
+    GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
+        )
+exported_pipeline.fit(data,label)
 for file in list_file_to_read:
     sub = file.split('_')[0]
     if int(sub[3:]) >= 11:
@@ -210,16 +142,17 @@ for file in list_file_to_read:
             raw.resample(500, npad="auto")
         raw.pick_channels(channelList)
         raw.filter(low,high)
-        # machine learning model KNN
-        print('KNN model for %s' % (sub+day))
+        # machine learning model export model
+        print('export model model for %s' % (sub+day))
         t0=time.time()
-        all_predictions_KNN[for_name]=eegPinelineDesign.fit_data(raw,KNN,
-                                          annotation_file,cv)
+        all_predictions_ML[for_name]=eegPinelineDesign.fit_data(raw,exported_pipeline,
+                                          annotation_file,cv,plot_flag=True)
         t1=time.time()
-        running_time_KNN[for_name]=t1-t0
-        print('KKN cv time: %.2f s'%(t1-t0))
+        running_time_ML[for_name]=t1-t0
+        print('export pipeline cv time: %.2f s'%(t1-t0))
 
         # machine learning model randomforest
+        """
         print('ranomd forest model for %s' % (sub+day))
         t0=time.time()
         all_predictions_randomforest[for_name]=eegPinelineDesign.fit_data(raw,randomforest,
@@ -227,6 +160,8 @@ for file in list_file_to_read:
         t1=time.time()
         running_time_randomforest[sub+day]=t1-t0
         print('RF cv time: %.2f s'%(t1-t0))
+        """
+        
         # signal processing model
         print('signal processing model for %s' % (sub+day))
         t0=time.time()
@@ -242,18 +177,24 @@ for file in list_file_to_read:
     else:
         print(sub+day+'no annotation')
         
-pickle.dump([all_detections,all_predictions_KNN,all_predictions_randomforest],open("%smodel comparions.p"%folder,"wb"))
-pickle.dump([running_time_signal_process,running_time_KNN,running_time_randomforest],open("%smodel running time.p"%folder,"wb"))
-result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
-all_detections,all_predictions_KNN,all_predictions_randomforest = result
+pickle.dump([all_detections,all_predictions_ML,all_predictions_randomforest],open("%smodel comparions.p"%folder,"wb"))
+pickle.dump([running_time_signal_process,running_time_ML,running_time_randomforest],open("%smodel running time.p"%folder,"wb"))
 
+                   
+result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
+all_detections,all_predictions_ML,all_predictions_randomforest = result
+exported_pipeline = make_pipeline(
+    make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
+    GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
+        ) 
 ############################################################################
-fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+fig, axes = plt.subplots(figsize=(16,32),nrows=2,sharex=True);cnt = 0
+ax=axes[0]
 xx,yy,xerr,ylabel = [],[],[],[]
-for keys, item in all_predictions_KNN.items():
+for keys, (item,fpr,tpr) in all_predictions_ML.items():
     yy.append(cnt)
     xx.append(np.mean(item))
-    xerr.append(np.std(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
     cnt += 1
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
@@ -262,7 +203,7 @@ ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',
             label='individual performance')
 
 ax.axvline(xx.mean(),
-           label='average performance across subjects: %.3f'%xx.mean())
+           label='average performance across subjects: %.3f'%xx.mean(),color='black')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),
             alpha=0.3,color='blue')
@@ -270,25 +211,30 @@ sortylabel = [ylabel[ii] for ii in sortIdx ]
 _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         xlabel='Area under the curve on predicting spindles and non spindles',
         ylabel='Subjects',
-        ylim=(-0.5,len(ylabel)+0.5))
-ax.annotate('Pipeline: "feature selection": f_classifier\n               "KNN": 5 neighbors, 20 leaves, \n                           metric: minkowski, \n                           weights: distance\n               "K-fold": 10, shuffle',xy=(0.6,13))
+        ylim=(-0.5,len(ylabel)+0.5),
+        )
+ax.annotate(exported_pipeline.named_steps,xy=(0.2,26),size=8)
+#ax.annotate(exported_pipeline.named_steps,xy=(0.03,0.77),size=8)
 ax.set_title('Individual cross validation results by KNN:\ncv=10',fontsize=20,fontweight='bold')
-_=ax.legend(loc='best')
-fig.savefig('%sindividual performance machine learning_KNN.png'%folder)
+lgd=ax.legend(loc='lower right',frameon=False,prop={'size':18})
+frame = lgd.get_frame()
+frame.set_facecolor('None')
+#fig.savefig('%sindividual performance machine learning_ML.png'%folder)
 
-fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+#fig, ax = plt.subplots(figsize=(16,16));
+cnt = 0;ax=axes[1]
 xx,yy,xerr,ylabel = [],[],[],[]
-for keys, item in all_detections.items():
+for keys, (item,fpr,tpr) in all_detections.items():
     yy.append(cnt)
     xx.append(np.mean(item))
-    xerr.append(np.std(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
     cnt += 1
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
-
+sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',
             label='individual performance')
-
+sortylabel = [ylabel[ii] for ii in sortIdx ]
 ax.axvline(xx.mean(),
            label='average performance across subjects: %.3f'%xx.mean())
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
@@ -297,10 +243,14 @@ ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
 _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         xlabel='Area under the curve on predicting spindles and non spindles',
         ylabel='Subjects',
-        ylim=(-0.5,len(ylabel)+0.5))
+        ylim=(-0.5,len(ylabel)+0.5),
+        )
 ax.set_title('Individual cross validation results by signal processing:\ncv=10',fontsize=20,fontweight='bold')
-_=ax.legend(loc='best')
-fig.savefig('%sindividual performance signal processing compared to KNN.png'%folder)
+lgd=ax.legend(loc='lower right',frameon=False,prop={'size':18})
+frame = lgd.get_frame()
+frame.set_facecolor('None')
+fig.savefig('%ssubplots'%folder)
+#fig.savefig('%sindividual performance signal processing compared to KNN.png'%folder)
 ######################################################################################
 
 
@@ -333,10 +283,10 @@ fig.savefig('%sindividual performance signal processing compared to KNN.png'%fol
 
 fig, ax = plt.subplots(figsize=(16,16));cnt = 0
 xx,yy,xerr,ylabel = [],[],[],[]
-for keys, item in all_detections.items():
+for keys, (item,fpr,tpr) in all_detections.items():
     yy.append(cnt)
     xx.append(np.mean(item))
-    xerr.append(np.std(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
     cnt += 1
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
@@ -355,36 +305,41 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         ylabel='Subjects',
         ylim=(-0.5,len(ylabel)+0.5))
 ax.set_title('Individual cross validation results by thresholding:\ncv=10',fontsize=20,fontweight='bold')
-_=ax.legend(loc='best')
+lgd=ax.legend(loc='lower right',frameon=False,prop={'size':18})
+frame = lgd.get_frame()
+frame.set_facecolor('None')
 _=ax.annotate('best lower threshold: %.2f, \nbest higher threshold: %.2f' % (lower_threshold,higher_threshold),xy=(0.47,cnt-8))
 fig.savefig('%sindividual performance signal processing (itself).png'%folder)
 ###################################################################################
-
+#from sklearn.externals import joblib
+#exported_pipeline = joblib.load('%smy_model.pkl'%folder)
+#cv = KFold(n_splits=10,random_state=18374,shuffle=True)
 # put them together
-fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+fig= plt.figure(figsize=(16,16));cnt = 0
+ax = fig.add_subplot(121)
 xx,yy,xerr,ylabel = [],[],[],[]
-for keys, item in all_detections.items():
+for keys, (item,fpr,tpr) in all_detections.items():
     yy.append(cnt+0.1)
     xx.append(np.mean(item))
-    xerr.append(np.std(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
     cnt += 1
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
-            label='individual performance_thresholding')
-ax.axvline(xx.mean(),color='blue',
-           label='thresholding performance: %.3f'%xx.mean())
+            label='Individual performance_thresholding')
+ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+4),
+           label='Thresholding performance: %.3f'%xx.mean())
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
-           xx.mean()+xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+4),
             alpha=0.3,color='blue')
 sortylabel = [ylabel[ii] for ii in sortIdx ]
 _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
-        xlabel='Area under the curve on predicting spindles and non spindles',
         ylabel='Subjects',
-        ylim=(-0.5,len(ylabel)+0.5),
-        xlim=(0.45,1.))
+        ylim=(-0.5,len(ylabel)+4),
+        )
 ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
+ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
 #xx,yy,xerr,ylabel = [],[],[],[];cnt=0
 #for keys, item in all_predictions_randomforest.items():
 #    yy.append(cnt+0.1)
@@ -401,67 +356,54 @@ ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweigh
 #ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
 #           xx.mean()+xx.std()/np.sqrt(len(xx)),
 #            alpha=0.3,color='black')
-from mpl_toolkits.axes_grid.inset_locator import inset_axes
+#from mpl_toolkits.axes_grid.inset_locator import inset_axes
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
-for keys, item in all_predictions_KNN.items():
+for keys, (item,fpr,tpr) in all_predictions_ML.items():
     yy.append(cnt)
     xx.append(np.mean(item))
-    xerr.append(np.std(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
     cnt += 1
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
-            label='individual performance_KNN')
+            label='Individual performance_ML')
 
-ax.axvline(xx.mean(),
-           label='KNN performance: %.3f'%xx.mean(),color='red')
+ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+4),
+           label='Machine learning performance: %.3f'%xx.mean(),color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
-           xx.mean()+xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+4),
             alpha=0.3,color='red')
 
 #ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
-ldg =ax.legend(loc='center right',prop={'size':18})
+lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False)
+frame = lgd.get_frame()
+frame.set_facecolor('None')
 
-file = 'suj13_l2nap_day2.fif'
-annotation_file = ['suj13_nap_day2_edited_annotations.txt']
-raw = mne.io.read_raw_fif(file,preload=True)
-annotation = pd.read_csv(annotation_file[0])
-raw.resample(500, npad="auto")
-raw.pick_channels(channelList)
-raw.filter(low,high)
-stop = raw.times[-1]-300
-e = mne.make_fixed_length_events(raw,1,start=100,stop = stop,duration=3,)
-manual_label = eegPinelineDesign.discritized_onset_label_manual(raw,annotation,3)
-epochs = mne.Epochs(raw,e,1,tmin=0,tmax=3,proj=False,preload=True)
-psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
-psds = 10* np.log10(psds)
-data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
-freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
-data = np.concatenate([data,psds,freqs],axis=2)
-data = data.reshape(len(e),-1)
+ax_ML = fig.add_subplot(222)
+AUC,fpr,tpr = all_predictions_ML['suj6day2']
+select = np.random.choice(np.arange(10),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
+ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+l=ax_ML.legend(loc='best',frameon=False,prop={'size':16})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_ML.set_title('Machine learning model of \nsubject %d day %d'%(6,2),fontweight='bold',fontsize=20)
+ax_ML.set(ylabel='False positive rate',ylim=(0,1.02))
 
-predictions = [];fp,tp=[],[];auc=[];cnt=0
-for train, test in cv.split(manual_label):
-    
-    #KNN.fit(data[train],label[train])
-    predictions.append(KNN.predict(data[test]))
-    fpr, tpr, thresholds = metrics.roc_curve(manual_label[test],np.array(predictions[cnt]).reshape(-1,))
-    auc.append(metrics.roc_auc_score(manual_label[test],np.array(predictions[cnt]).reshape(-1,)))
-    #ax.plot(fpr,tpr,label='%s,Area under the curve: %.3f'%(type_,auc[cnt]))
-    fp.append(fpr);tp.append(tpr)
-    cnt += 1
-fpr = np.mean(fp,0);tpr=np.mean(tp,0)
-_,fpr,tpr,_ = eegPinelineDesign.fit_data(raw,KNN,annotation_file,cv=cv,plot_flag=True)
-inset_axes1 = inset_axes(ax, 
-                    width="40%", 
-                    height=3.0, 
-                    loc=1)
+ax_signal = fig.add_subplot(224)
+temp_auc,fp,tp = all_detections['suj20day1']
+fp,tp = np.array(fp),np.array(tp)
+ax_signal.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+ax_signal.legend(loc='best',frameon=False,prop={'size':16})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
+ax_signal.set(ylabel='False positive rate',ylim=(0,1.02))
+ax_signal.set_xlabel('True positive rate',fontsize=15)
 
-_,fpr1,tpr1 = eegPinelineDesign.fit_data(raw,KNN,annotation_file,cv,plot_flag=True)
-inset_axes2 = inset_axes(ax, 
-                    width="40%", 
-                    height=3.0, 
-                    loc=4)
-fig.tight_layout()
-fig.savefig('%sindividual performance (2 models).png'%folder,bbox_extra_artists=(ldg,), bbox_inches='tight')
+
+#fig.tight_layout()
+fig.savefig('%sindividual performance (2 models).png'%folder, bbox_inches='tight')

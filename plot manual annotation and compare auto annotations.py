@@ -29,9 +29,9 @@ annotation_in_fold=[files for files in file_in_fold if ('txt' in files) and ('an
 windowSize=500;threshold=0.4;syn_channel=3
 l,h = (11,16);
 low, high=11,16
-hh=3.4
+hh=3.5
 front=300;back=100;total=front+back
-if False:
+if True:
     for file in list_file_to_read:
         sub = file.split('_')[0]
         if int(sub[3:]) >= 11:
@@ -133,7 +133,7 @@ ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new,cut=0,split=Tr
 ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
             ylabel='')
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(loc='best',prop={'size':18})
+lgd2=ax[1].legend(loc='best',prop={'size':22})
 fig.tight_layout()       
 fig.savefig('manu vs auto.png')       
         
@@ -157,7 +157,7 @@ ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
             ylabel='')
 handles, labels = ax[1].get_legend_handles_labels()
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':18})
+lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':22})
 fig.tight_layout()
 f.savefig('manu only.png',bbox_inches = 'tight')      
         

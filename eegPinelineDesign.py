@@ -1719,34 +1719,47 @@ def data_gathering_pipeline(temp_dictionary,
 
     return temp_dictionary,sampling,labeling
 
-from sklearn.metrics import roc_auc_score
-def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False):
+
+def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False,front=300,back=100,):
     data=[];
-    stop = raw.times[-1]-300
-    e = mne.make_fixed_length_events(raw,1,start=100,stop = stop,duration=3,)
-    epochs = mne.Epochs(raw,e,1,tmin=0,tmax=3,proj=False,)
-    psds, freqs=psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
+    stop = raw.times[-1]-back
+    events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
+    epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
+    psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
     psds = 10* np.log10(psds)
     data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
     freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
     data = np.concatenate([data,psds,freqs],axis=2)
-    data = data.reshape(len(e),-1)
+    data = data.reshape(len(events),-1)
     gold_standard = read_annotation(raw,annotation_file)
     manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
 
-    predictions = [];fpr,tpr=[],[];AUC=[]
-    for train, test in cv.split(data):
-        #exported_pipeline.fit(data[train,:],manual_labels[train])
-        predictions.append(exported_pipeline.predict(data[train]))
-        fp,tp,T = roc_curve(manual_labels[train],
-                      exported_pipeline.predict(data[train]))
-        AUC.append(roc_auc_score(manual_labels[train],
-                      exported_pipeline.predict(data[train,:])))
-        fpr.append(fp);tpr.append(tp)
-    if plot_flag:
-        return AUC,fpr,tpr,predictions
-    else:
-        return AUC
+    
+
+    try:
+        print('doing fit prediction')
+        fpr,tpr=[],[];AUC=[]
+        for train, test in cv.split(data):
+            exported_pipeline.fit(data[train,:],manual_labels[train])
+            #predictions.append(exported_pipeline.predict(data[train,:]))
+            fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+            AUC.append(roc_auc_score(manual_labels[test],
+                      exported_pipeline.predict_proba(data[test])[:,1]))
+            fpr.append(fp);tpr.append(tp)
+        return AUC,fpr,tpr
+    except:
+        fpr,tpr=[],[];AUC=[]
+        cv = KFold(n_splits=10,random_state=0,shuffle=True)
+        for train, test in cv.split(data):
+            #exported_pipeline.fit(data[train,:],manual_labels[train])
+            #predictions.append(exported_pipeline.predict(data[train,:]))
+            fp,tp,_ = roc_curve(manual_labels[train],exported_pipeline.predict_proba(data[train])[:,1])
+            AUC.append(roc_auc_score(manual_labels[train],
+                      exported_pipeline.predict_proba(data[train])[:,1]))
+            fpr.append(fp);tpr.append(tp)
+        return AUC,fpr,tpr
+    
+    return AUC,fpr,tpr
 def compute_measures(dictionary_data, label='without',plot_flag=False,n_folds=10):
     random.seed(12345)
     df_accuracy=[];df_confusion_matrix=[];df_fpr=[];df_tpr=[];df_AUC=[];
@@ -1864,11 +1877,12 @@ def compute_two_thresholds(dictionary_data, label='without',plot_flag=False,n_fo
     else:
         return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,result
         
-def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,threshold,higher_threshold,syn_channel,l,h,annotation_file,front=300,back=100,plot_flag=False):
+def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,plot_flag=False):
     time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,channelList,annotation,moving_window_size=windowSize,threshold=threshold,
                                         syn_channels=syn_channel,l_freq=l,h_freq=h,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
                                         )
-    ### Taking out the first 100 seconds and the last 100 seconds ###      
+    ### Taking out the first 100 seconds and the last 100 seconds ###
+    print('signal processing')      
     result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
     result['Annotation'] = 'auto spindle'
     result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
@@ -1881,15 +1895,15 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,thr
     auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
                                                                                                
     raw.close()  
-    temp_auc = [];fp,tp=[],[]
-    for ii in range(10):
-        idx = np.arange(len(manual_labels))
-        idx = np.random.choice(idx,round(len(idx) * .9),replace=False)
-        detected,truth = auto_labels[idx],manual_labels[idx]
+    temp_auc = [];fp=[];tp=[]
+    if cv == None:
+        cv = KFold(n_splits=10,random_state=12345,shuffle=True)
+    for train, test in cv.split(manual_labels):
+        detected,truth = auto_labels[train],manual_labels[train]
         temp_auc.append(roc_auc_score(truth,detected))
-        fpr,tpr,T = roc_curve(truth,detected)
-        fp.append(fpr);tp.append(tp)
+        fpr,tpr,_ = roc_curve(truth,detected)
+        fp.append(fpr);tp.append(tpr)
     if plot_flag:
         return temp_auc,fp,tp
     else:
-        return temp_auc
+        return temp_auc,fp,tp
