@@ -248,18 +248,221 @@ data,label = np.concatenate(sample),np.concatenate(label)
 idx_row=np.arange(0,len(label),1)
 from random import shuffle
 from sklearn.model_selection import train_test_split
-from tpot import TPOTClassifier
+#from tpot import TPOTClassifier
 print('shuffle')
 for ii in range(100):
     shuffle(idx_row)
 data,label = data[idx_row,:],label[idx_row]
 features = data
 tpot_data=pd.DataFrame({'class':label},columns=['class'])
-for aa in range(10):
-    X_train, X_test, y_train, y_test = train_test_split(data,label,train_size=0.80)
-    print('model selection')
-    tpot = TPOTClassifier(generations=10, population_size=25,
-                          verbosity=2,random_state=373849,num_cv_folds=5,scoring='roc_auc' )
-    tpot.fit(X_train,y_train)
-    tpot.score(X_test,y_test)
-    tpot.export('tpot_exported_pipeline(%d).py'%(aa+1) )  
+
+#X_train, X_test, y_train, y_test = train_test_split(data,label,train_size=0.80)
+#print('model selection')
+#tpot = TPOTClassifier(generations=5, population_size=25,
+#                      verbosity=2,random_state=373849,num_cv_folds=5,scoring='roc_auc' )
+#tpot.fit(X_train,y_train)
+#tpot.score(X_test,y_test)
+#tpot.export('tpot_exported_pipeline(%d).py'%(1) )  
+from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier
+from sklearn.pipeline import make_pipeline, make_union
+from sklearn.preprocessing import FunctionTransformer
+
+from sklearn.model_selection import KFold
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score,roc_curve,auc
+cv = KFold(n_splits=5,random_state=0,shuffle=True)
+fig,ax  = plt.subplots(figsize=(15,15))
+for train, test in cv.split(features,label):
+    exported_pipeline = make_pipeline(
+    make_union(
+        FunctionTransformer(lambda X: X),
+        FunctionTransformer(lambda X: X)
+    ),
+    ExtraTreesClassifier(criterion="entropy", max_features=0.32, n_estimators=500)
+    )
+    exported_pipeline.fit(features[train],label[train])
+    pred_proba=exported_pipeline.predict_proba(features[test])
+    fpr,tpr,t= roc_curve(label[test],pred_proba[:,1])
+    auc = roc_auc_score(label[test],exported_pipeline.predict(features[test]))
+    ax.plot(fpr,tpr,label='%.2f'%auc)
+ax.legend(loc='best')
+ax.plot([0,1],[0,1],linestyle='--',color='blue')  
+fig.savefig('machine learning (extratrees).png')  
+    
+
+############### individual cross validation ##############
+crossvalidation = pd.read_csv('best thresholds.csv')
+best_low = crossvalidation['low'].mean()
+best_high = crossvalidation['high'].mean()
+fif_files = [f for f in os.listdir() if ('fif' in f)]
+spindle_files = [f for f in os.listdir() if ('scoring1' in f)]
+hypno_files = [f for f in os.listdir() if ('Hypnogram' in f)]
+expert2_files = [f for f in os.listdir() if ('scoring2' in f)]
+idx_files = np.concatenate([np.ones(6),np.zeros(2)])
+raws=[]
+cv = KFold(n_splits=10,random_state=0,shuffle=True)
+for raw_fif in fif_files[:-2]:
+    a=mne.io.read_raw_fif(raw_fif,preload=True)
+    a.filter(11,16)
+    raws.append(a)
+all_detection={};all_ML = {};all_expert2={}
+for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_files,expert2_files):
+    result,_,auto_labels,manual_labels,discritized_times_intervals = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
+                                   lower_threshold=best_low,higher_threshold=best_high)
+    temp_auc = [];fp=[];tp=[]
+    
+    for train, test in cv.split(manual_labels):
+        detected,truth = auto_labels[train],manual_labels[train]
+        temp_auc.append(roc_auc_score(truth,detected))
+        fpr,tpr,_ = roc_curve(truth,detected)
+        fp.append(fpr);tp.append(tpr)
+    all_detection[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp]
+
+    events = mne.make_fixed_length_events(raw,id=1,duration=3)
+    epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
+    psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
+    psds = 10* np.log10(psds)
+    data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
+    freqs = freqs.reshape(len(freqs),1,1);psds = psds.reshape(len(psds),1,1)
+    data = np.concatenate([data,psds,freqs],axis=2)
+    data = data.reshape(len(data),-1)
+    labels = manual_labels
+    fpr,tpr=[],[];AUC=[]
+    for train,test in cv.split(manual_labels):
+        exported_pipeline = make_pipeline(
+        make_union(
+            FunctionTransformer(lambda X: X),
+            FunctionTransformer(lambda X: X)
+        ),
+        ExtraTreesClassifier(criterion="entropy", max_features=0.32, n_estimators=500)
+        )
+        exported_pipeline.fit(data[train],labels[train])
+        fp_,tp_,_ = roc_curve(labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+        AUC.append(roc_auc_score(labels[test],
+                  exported_pipeline.predict_proba(data[test])[:,1]))
+        fpr.append(fp_);tpr.append(tp_)
+    all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr]
+
+    expert2_spindle = np.loadtxt(expert2_file,skiprows=1)
+    expert2_spindle = pd.DataFrame({'Onset':expert2_spindle[:,0],'Duration':expert2_spindle[:,1]})
+    expert2_labels,_ = discritized_onset_label_manual(raw,expert2_spindle,3)
+    temp_auc_,fp_,tp_=[],[],[]
+    for train,test in cv.split(manual_labels):
+        detected,truth = expert2_labels[train],manual_labels[train]
+        temp_auc_.append(roc_auc_score(truth,detected))
+        fpr,tpr,_ = roc_curve(truth,detected)
+        fp_.append(fpr);tp_.append(tpr)
+    all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_]
+    
+fig= plt.figure(figsize=(16,16));cnt = 0;uv=1
+ax = fig.add_subplot(121)
+xx,yy,xerr,ylabel = [],[],[],[]
+for keys, (item,fpr,tpr) in all_detection.items():
+    yy.append(cnt+0.1)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+sortIdx = np.argsort(xx)
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
+            label='Individual performance_thresholding')
+ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+uv),
+           label='Thresholding performance: %.3f'%xx.mean())
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
+            alpha=0.3,color='blue')
+sortylabel = [ylabel[ii] for ii in sortIdx ]
+_=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
+        ylabel='Subjects',
+        ylim=(-0.5,len(ylabel)+uv),
+        )
+ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
+ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
+xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
+for keys, (item,fpr,tpr) in all_ML.items():
+    yy.append(cnt+0.2)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
+            label='Individual performance_ML')
+
+ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
+           label='Machine learning performance: %.3f'%xx.mean(),color='red')
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
+            alpha=0.3,color='red')
+
+xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
+for keys, (item,fpr,tpr) in all_expert2.items():
+    yy.append(cnt)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='green',
+            label='Individual performance_expert 2')
+
+ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
+           label='expert 2 performance: %.3f'%xx.mean(),color='green')
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
+            alpha=0.3,color='green')
+
+#ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
+lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False)
+frame = lgd.get_frame()
+frame.set_facecolor('None')
+
+ax_ML = fig.add_subplot(322)
+AUC,fpr,tpr = all_ML['excerpt1']
+select = np.random.choice(np.arange(10),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
+ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+l=ax_ML.legend(loc='best',frameon=False,prop={'size':16})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_ML.set_title('Machine learning model of \nexcerpt1',fontweight='bold',fontsize=20)
+ax_ML.set(ylabel='False positive rate',ylim=(0,1.02))
+
+ax_signal = fig.add_subplot(324)
+temp_auc,fp,tp = all_detection['excerpt1']
+fp,tp = np.array(fp),np.array(tp)
+ax_signal.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+ax_signal.legend(loc='best',frameon=False,prop={'size':16})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
+ax_signal.set(ylabel='False positive rate',ylim=(0,1.02))
+#ax_signal.set_xlabel('True positive rate',fontsize=15)
+
+ax_expert2 = fig.add_subplot(326)
+temp_auc,fp,tp = all_expert2['excerpt1']
+fp,tp = np.array(fp),np.array(tp)
+ax_expert2.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_expert2.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+ax_expert2.legend(loc='best',frameon=False,prop={'size':16})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=20)
+ax_expert2.set(ylabel='False positive rate',ylim=(0,1.02))
+ax_expert2.set_xlabel('True positive rate',fontsize=15)
+
+
+
+
+
+
+
+
+
+
+
