@@ -300,7 +300,7 @@ hypno_files = [f for f in os.listdir() if ('Hypnogram' in f)]
 expert2_files = [f for f in os.listdir() if ('scoring2' in f)]
 idx_files = np.concatenate([np.ones(6),np.zeros(2)])
 raws=[]
-cv = KFold(n_splits=10,random_state=0,shuffle=True)
+cv = KFold(n_splits=5,random_state=0,shuffle=True)
 for raw_fif in fif_files[:-2]:
     a=mne.io.read_raw_fif(raw_fif,preload=True)
     a.filter(11,16)
@@ -377,7 +377,7 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         ylabel='Subjects',
         ylim=(-0.5,len(ylabel)+uv),
         )
-ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
+ax.set_title('Individual model comparison results:\ncv=5',fontsize=20,fontweight='bold')
 ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_ML.items():
@@ -422,7 +422,7 @@ frame.set_facecolor('None')
 
 ax_ML = fig.add_subplot(322)
 AUC,fpr,tpr = all_ML['excerpt1']
-select = np.random.choice(np.arange(10),size=1)[0]
+select = np.random.choice(np.arange(5),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
 ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
 ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
@@ -455,6 +455,7 @@ frame.set_facecolor('None')
 ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=20)
 ax_expert2.set(ylabel='False positive rate',ylim=(0,1.02))
 ax_expert2.set_xlabel('True positive rate',fontsize=15)
+fig.savefig('new data comparison.png')
 
 
 
