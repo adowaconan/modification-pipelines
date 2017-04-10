@@ -9,7 +9,7 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 
 
 # [ICA parameters](martinos.org/mne/stable/auto_tutorials/plot_artifacts_correlation_ica.html):
-1. bandpass 1-200 Hz
+1. lowpass 200 Hz (however, literature suggests also highpass at 1 Hz to advoid overfitting ICA)
 2. apply notch filter at 60 Hz
 3. MNE ICA: iterration = 3000, fixed random state
 4. artifact dectection is based on channles "LOC" and "ROC", and run automatically
@@ -23,9 +23,10 @@ Pipelines for analyzing EEG data and detect spindls, sleeping stages, and k-comp
 4. compute the harmonic mean of the RMSs of the 6 channels and call it the mean channel
 5. compute RMS for the mean channel
 6. compute trimmed mean and trimmed standard deviation (5%) on the data after the first 100 seconds and before the last 30 seconds for both the individual channels and the mean channel
-7. threshold = mean + .8 * standard deviation (Begmann et al., 2012) and less than 4 standard deviations.
-8. post threshold parameter: segments that is above the threshold and duration of the segments is in between 0.5 - 2 secs
-9. determining spindles: find spindles in AT LEAST (>=) 3 channels AND find spindle in average channel at the similar time stamp (deviate < 1.5 second)
+7. lower_threshold = mean + lower_threshold * standard deviation (Begmann et al., 2012) 
+8. higher_threshold = mean + higher_threshold * standard deviation
+9. post threshold parameter: segments that is above the threshold and duration of the segments is in between 0.5 - 2 secs
+10. determining spindles: find spindles in AT LEAST (>=) 3 channels AND find spindle in average channel at the similar time stamp (deviate < 1 second)
 
 # [Power spetral density analysis](spisop.org/documentation)
 1. delta 1: 0-2 Hz
