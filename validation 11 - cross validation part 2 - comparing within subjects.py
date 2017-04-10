@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Feb  7 13:22:12 2017
+Update on Mon April 10 15:25:26 2017
 
 @author: ning
 """
@@ -112,16 +113,18 @@ ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax.set(xlabel='false alarm rate',ylabel='true positive rate',
        xlim=[0.,1.],ylim=[0.,1.05])
 ax.set_title('Gradient Boosting Classifier model to classify spindles and non spindles',fontsize=22,fontweight="bold")
-#ax.annotate(exported_pipeline.named_steps,xy=(0.03,0.77),size=8)
 legend=ax.legend(loc='upper left',frameon=False)
 frame = legend.get_frame()
 frame.set_facecolor('None')
 fig.savefig('%sGBC.png'%folder)
+
+# individual cross validation
 exported_pipeline = make_pipeline(
     make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
     GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
         )
 exported_pipeline.fit(data,label)
+cv = KFold(n_splits=10,random_state=18374,shuffle=True)
 for file in list_file_to_read:
     sub = file.split('_')[0]
     if int(sub[3:]) >= 11:
@@ -146,7 +149,7 @@ for file in list_file_to_read:
         print('export model model for %s' % (sub+day))
         t0=time.time()
         all_predictions_ML[for_name]=eegPinelineDesign.fit_data(raw,exported_pipeline,
-                                          annotation_file,cv,plot_flag=True)
+                                          annotation_file,cv=cv,plot_flag=True)
         t1=time.time()
         running_time_ML[for_name]=t1-t0
         print('export pipeline cv time: %.2f s'%(t1-t0))

@@ -20,6 +20,8 @@ import math
 from mne.time_frequency import psd_multitaper
 from sklearn.model_selection import KFold
 from sklearn.metrics import confusion_matrix,accuracy_score,roc_curve,roc_auc_score
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.preprocessing import StandardScaler
 
 #from obspy.signal.filter import bandpass
 
@@ -1352,6 +1354,151 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
                 temp_duration.append(single_duration)
     time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
     return time_find,mean_peak_power,Duration,peak_time,peak_at
+def thresholding_filterbased_spindle_searching(raw,channelList,annotations,moving_window_size=200,lower_threshold=.9,
+                                        syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
+                                        front=300,back=100,sleep_stage=True,proba=False,validation_windowsize=3):
+    
+    
+    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+    peak_time={} #preallocate
+    sfreq=raw.info['sfreq']
+    mph,mpl = {},{}
+
+    for ii, names in enumerate(channelList):
+
+        peak_time[names]=[]
+        segment,_ = raw[ii,:]
+        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) 
+        mph[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + lower_threshold * trimmed_std(RMS[ii,:],0.05) 
+        mpl[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + higher_threshold * trimmed_std(RMS[ii,:],0.05)
+        pass_ = RMS[ii,:] > mph[names]#should be greater than then mean not the threshold to compute duration
+
+        up = np.where(np.diff(pass_.astype(int))>0)
+        down = np.where(np.diff(pass_.astype(int))<0)
+        up = up[0]
+        down = down[0]
+        ###############################
+        #print(down[0],up[0])
+        if down[0] < up[0]:
+            down = down[1:]
+        #print(down[0],up[0])
+        #############################
+        if (up.shape > down.shape) or (up.shape < down.shape):
+            size = np.min([up.shape,down.shape])
+            up = up[:size]
+            down = down[:size]
+        C = np.vstack((up,down))
+        for pairs in C.T:
+            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+                if np.max(SegmentForPeakSearching) < mpl[names]:
+                    temp_temp_time = time[pairs[0]:pairs[1]]
+                    ints_temp = np.argmax(SegmentForPeakSearching)
+                    peak_time[names].append(temp_temp_time[ints_temp])
+                    
+        
+
+    peak_time['mean']=[];peak_at=[];duration=[]
+    RMS_mean=hmean(RMS)
+    
+    mph['mean'] = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + lower_threshold * trimmed_std(RMS_mean,0.05)
+    mpl['mean'] = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + higher_threshold * trimmed_std(RMS_mean,0.05)
+    pass_ =RMS_mean > mph['mean']
+    up = np.where(np.diff(pass_.astype(int))>0)
+    down= np.where(np.diff(pass_.astype(int))<0)
+    up = up[0]
+    down = down[0]
+    ###############################
+    #print(down[0],up[0])
+    if down[0] < up[0]:
+        down = down[1:]
+    #print(down[0],up[0])
+    #############################
+    if (up.shape > down.shape) or (up.shape < down.shape):
+        size = np.min([up.shape,down.shape])
+        up = up[:size]
+        down = down[:size]
+    C = np.vstack((up,down))
+    for pairs in C.T:
+        
+        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+            if np.max(SegmentForPeakSearching)< mpl['mean']:
+                temp_time = time[pairs[0]:pairs[1]]
+                ints_temp = np.argmax(SegmentForPeakSearching)
+                peak_time['mean'].append(temp_time[ints_temp])
+                peak_at.append(SegmentForPeakSearching[ints_temp])
+                duration_temp = time[pairs[1]] - time[pairs[0]]
+                duration.append(duration_temp) 
+            
+        
+    time_find=[];mean_peak_power=[];Duration=[];
+    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+        temp_timePoint=[]
+        for ii, names in enumerate(channelList):
+            try:
+                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+            except:
+                temp_timePoint.append(item + 2)
+        try:
+            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
+                time_find.append(float(item))
+                mean_peak_power.append(PEAK)
+                Duration.append(duration_time)
+        except:
+            pass
+    if sleep_stage:
+        
+        temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
+        # seperate out stage 2
+        stages = annotations[annotations.Annotation.apply(stage_check)]
+        On = stages[::2];Off = stages[1::2]
+        stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+        if abs(np.diff(stage_on_off[0]) - 30) < 2:
+            pass
+        else:
+            On = stages[1::2];Off = stages[::2]
+            stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+        for single_time_find, single_mean_peak_power, single_duration in zip(time_find,mean_peak_power,Duration):
+            for on_time,off_time in stage_on_off:
+                if intervalCheck([on_time,off_time],single_time_find,tol=tol):
+                    temp_time_find.append(single_time_find)
+                    temp_mean_peak_power.append(single_mean_peak_power)
+                    temp_duration.append(single_duration)
+        time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
+    
+    result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
+    auto_label,_ = discritized_onset_label_auto(raw,result,validation_windowsize)
+    decision_features=None
+    if proba:
+        events = mne.make_fixed_length_events(raw,id=1,start=0,duration=validation_windowsize)
+        epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,preload=True)
+        data = epochs.get_data()[:,:,:-1]
+        full_prop=[]        
+        for d in data:    
+            temp_p=[]
+            #fig,ax = plt.subplots(nrows=2,ncols=3,figsize=(8,8))
+            for ii,(name) in enumerate(zip(channelList)):#,ax.flatten())):
+                rms = window_rms(d[ii,:],500)
+                l = trim_mean(rms,0.05) + lower_threshold * trimmed_std(rms,0.05)
+                h = trim_mean(rms,0.05) + higher_threshold * trimmed_std(rms,0.05)
+                prop = (sum(rms>l)+sum(rms<h))/(sum(rms<h) - sum(rms<l))
+                if np.isinf(prop):
+                    prop = (sum(rms>l)+sum(rms<h))
+                temp_p.append(prop)
+                
+            
+            full_prop.append(temp_p)
+        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=11,fmax=16,tmin=0,tmax=3,low_bias=True,)
+        psds = 10* np.log10(psds)
+        features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
+        decision_features = StandardScaler().fit_transform(features.values,auto_label)
+        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-7,max_iter=int(1e7))
+        clf.fit(decision_features,auto_label)
+        auto_proba=clf.predict_proba(decision_features)[:,-1]
+            
+    return time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
     if spindle_duration_fix:
         spindle_start = spindle - 0.5
@@ -1366,20 +1513,21 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
                            (intervalCheck(time_interval,spindle_end)))
         return a
 def discritized_onset_label_manual(raw,df,spindle_segment):
-    discritized_continuous_time = np.arange(300,raw.times[-1]-100,step=spindle_segment)
+    discritized_continuous_time = np.arange(0,raw.times[-1],step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
+    temp=[]
     for jj,(time_interval_1,time_interval_2) in enumerate(discritized_time_intervals):
         time_interval = [time_interval_1,time_interval_2]
         for spindle in df['Onset']:
-            #print(time_interval,spindle,spindle_segment)
+            temp.append([time_interval,spindle])
             if spindle_comparison(time_interval,spindle,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
-    return discritized_time_to_zero_one_labels
+    return discritized_time_to_zero_one_labels,temp
 def discritized_onset_label_auto(raw,df,spindle_segment):
     spindle_duration = df['Duration'].values
-    discritized_continuous_time = np.arange(300,raw.times[-1]-100,step=spindle_segment)
+    discritized_continuous_time = np.arange(0,raw.times[-1],step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -1664,17 +1812,22 @@ def data_gathering_pipeline(temp_dictionary,
                             l=1,h=40,annotation=None,old=True,annotation_file=None,higher_threshold=1.,
                             front=300,back=100):
     if do == 'with_stage':
-        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,
-                                                                                                 channelList,annotation,
-                                                                                                 moving_window_size=windowSize,
-                                                                                                 threshold=threshold,
-                                                                                                 syn_channels=syn_channel,
-                                                                                                 l_freq=l,
-                                                                                                 h_freq=h,
-                                                                                                 l_bound=0.5,
-                                                                                                 h_bound=3.0,tol=1,
-                                                                                                 higher_threshold=higher_threshold,
-                                                                                                 )
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,
+                                                                                                                    moving_window_size=windowSize,
+                                                                                                                    lower_threshold=threshold,higher_threshold=higher_threshold,
+                                                                                                                    proba=False,front=front,back=back,
+                                                                                                                    sleep_stage=True)
+#        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,
+#                                                                                                 channelList,annotation,
+#                                                                                                 moving_window_size=windowSize,
+#                                                                                                 threshold=threshold,
+#                                                                                                 syn_channels=syn_channel,
+#                                                                                                 l_freq=l,
+#                                                                                                 h_freq=h,
+#                                                                                                 l_bound=0.5,
+#                                                                                                 h_bound=3.0,tol=1,
+#                                                                                                 higher_threshold=higher_threshold,
+#                                                                                                 )
         
     elif do == 'without_stage':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
@@ -1732,7 +1885,7 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False,front=300,
     data = np.concatenate([data,psds,freqs],axis=2)
     data = data.reshape(len(events),-1)
     gold_standard = read_annotation(raw,annotation_file)
-    manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
+    manual_labels,_ = discritized_onset_label_manual(raw,gold_standard,3)
 
     
 
@@ -1748,6 +1901,7 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False,front=300,
             fpr.append(fp);tpr.append(tp)
         return AUC,fpr,tpr
     except:
+        print('too few spindle for fiting')
         fpr,tpr=[],[];AUC=[]
         cv = KFold(n_splits=10,random_state=0,shuffle=True)
         for train, test in cv.split(data):
@@ -1877,33 +2031,26 @@ def compute_two_thresholds(dictionary_data, label='without',plot_flag=False,n_fo
     else:
         return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,result
         
-def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,plot_flag=False):
-    time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage(raw,channelList,annotation,moving_window_size=windowSize,threshold=threshold,
-                                        syn_channels=syn_channel,l_freq=l,h_freq=h,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
+def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,lower_threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,plot_flag=False):
+    time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,moving_window_size=200,
+                                                                                                    lower_threshold=lower_threshold,
+                                        syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
+                                        front=300,back=100,sleep_stage=True,proba=True,validation_windowsize=3
                                         )
-    ### Taking out the first 100 seconds and the last 100 seconds ###
-    print('signal processing')      
-    result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
-    result['Annotation'] = 'auto spindle'
-    result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
-    result = result[result.Onset > front]
-    #Time_ = result.Onset.values 
+    
 
     #anno = annotation[annotation.Annotation == 'spindle']['Onset']
     gold_standard = read_annotation(raw,annotation_file)
-    manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
-    auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
+    manual_labels,_ = discritized_onset_label_manual(raw,gold_standard,3)
+    
                                                                                                
     raw.close()  
-    temp_auc = [];fp=[];tp=[]
+    temp_auc = [];#fp=[];tp=[]
     if cv == None:
         cv = KFold(n_splits=10,random_state=12345,shuffle=True)
     for train, test in cv.split(manual_labels):
-        detected,truth = auto_labels[train],manual_labels[train]
+        detected,truth = auto_label[train],manual_labels[train]
         temp_auc.append(roc_auc_score(truth,detected))
-        fpr,tpr,_ = roc_curve(truth,detected)
-        fp.append(fpr);tp.append(tpr)
-    if plot_flag:
-        return temp_auc,fp,tp
-    else:
-        return temp_auc,fp,tp
+        
+    fpr,tpr,t = roc_curve(manual_labels,auto_proba)
+    return temp_auc,fpr,tpr

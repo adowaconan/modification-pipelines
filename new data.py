@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Apr  3 17:13:17 2017
+Updated on Mon Apr 10 15:45:33 2017
 
 @author: ning
 """
@@ -9,10 +10,21 @@ import eegPinelineDesign
 import numpy as np
 import mne
 import matplotlib.pyplot as plt
+plt.rcParams['legend.numpoints']=1
 import os
 os.chdir('DatabaseSpindles')
 import pandas as pd
 import random
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier
+from sklearn.pipeline import make_pipeline, make_union
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.metrics import roc_auc_score
+
+from sklearn.model_selection import KFold
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score,roc_curve,auc
 data_des = pd.read_csv('data description.csv',index_col=False)
 def spindle_comparison(times_interval,spindle,spindle_duration,spindle_manual=True):
     if spindle_manual:
@@ -56,7 +68,8 @@ def new_data_pipeline(raw,annotation_file_name,Hypnogram_file_name,
                       lower_threshold=.9,higher_threshold=3.5,
                       l_freq=11,h_freq=16,
                       l_bound=0.5,h_bound=2,tol=1,
-                      front=1,back=1,spindle_segment=3):
+                      front=1,back=1,spindle_segment=3,
+                      proba=True):
 
     # prepare annotations   
     spindle = np.loadtxt(annotation_file_name,skiprows=1)
@@ -100,7 +113,6 @@ def new_data_pipeline(raw,annotation_file_name,Hypnogram_file_name,
         peak_=[];duration=[];peak_times=[]
         for pairs in C.T:
             if l_bound < (times[pairs[1]] - times[pairs[0]]) < h_bound:
-                timesPoint = np.mean([times[pairs[1]],times[pairs[0]]])
                 SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
                 if np.max(SegmentForPeakSearching) < mpl:
                     temp_temp_times = times[pairs[0]:pairs[1]]
@@ -125,9 +137,35 @@ def new_data_pipeline(raw,annotation_file_name,Hypnogram_file_name,
     # validation
     manual,_ = discritized_onset_label_manual(raw,annotation,spindle_segment)
     auto,times= discritized_onset_label_auto(raw,result,spindle_segment)
-    from sklearn.metrics import roc_auc_score
+    decision_features=None
+    if proba:
+        events = mne.make_fixed_length_events(raw,id=1,start=0,duration=spindle_segment)
+        epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=spindle_segment,preload=True)
+        data = epochs.get_data()[:,:,:-1]
+        
+        full_prop=[]        
+        for d in data:    
+            
+            rms = eegPinelineDesign.window_rms(d[0,:],500)
+            l = eegPinelineDesign.trim_mean(rms,0.05) + lower_threshold * eegPinelineDesign.trimmed_std(rms,0.05)
+            h = eegPinelineDesign.trim_mean(rms,0.05) + higher_threshold * eegPinelineDesign.trimmed_std(rms,0.05)
+            temp_p = (sum(rms>l)+sum(rms<h))/(sum(rms<h) - sum(rms<l))
+            if np.isinf(temp_p):
+                temp_p = (sum(rms>l)+sum(rms<h))
+            full_prop.append(temp_p)
+        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=11,fmax=16,tmin=0,tmax=3,low_bias=True,)
+        psds = 10* np.log10(psds)
+        features = pd.DataFrame({'signal':np.array(full_prop),'psd':psds.max(2)[:,0],'freq':freq[np.argmax(psds,2)][:,0]})
+        decision_features = StandardScaler().fit_transform(features.values,auto)
+        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-7,max_iter=int(1e7))
+        try:
+            clf.fit(decision_features,auto)
+        except:
+            clf.fit(decision_features[:-1],auto)
+        auto_proba=clf.predict_proba(decision_features)[:,-1]
+    
     auc = roc_auc_score(manual, auto)
-    return result,auc,auto,manual,times
+    return result,auc,auto,manual,times,auto_proba
 
 fif_files = [f for f in os.listdir() if ('fif' in f)]
 spindle_files = [f for f in os.listdir() if ('scoring1' in f)]
@@ -263,13 +301,7 @@ tpot_data=pd.DataFrame({'class':label},columns=['class'])
 #tpot.fit(X_train,y_train)
 #tpot.score(X_test,y_test)
 #tpot.export('tpot_exported_pipeline(%d).py'%(1) )  
-from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier
-from sklearn.pipeline import make_pipeline, make_union
-from sklearn.preprocessing import FunctionTransformer
 
-from sklearn.model_selection import KFold
-import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score,roc_curve,auc
 cv = KFold(n_splits=5,random_state=0,shuffle=True)
 fig,ax  = plt.subplots(figsize=(15,15))
 for train, test in cv.split(features,label):
@@ -307,15 +339,19 @@ for raw_fif in fif_files[:-2]:
     raws.append(a)
 all_detection={};all_ML = {};all_expert2={}
 for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_files,expert2_files):
-    result,_,auto_labels,manual_labels,discritized_times_intervals = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
+    result,_,auto_labels,manual_labels,discritized_times_intervals,auto_proba = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
                                    lower_threshold=best_low,higher_threshold=best_high)
     temp_auc = [];fp=[];tp=[]
     
     for train, test in cv.split(manual_labels):
         detected,truth = auto_labels[train],manual_labels[train]
         temp_auc.append(roc_auc_score(truth,detected))
-        fpr,tpr,_ = roc_curve(truth,detected)
-        fp.append(fpr);tp.append(tpr)
+#        fpr,tpr,_ = roc_curve(truth,detected)
+#        fp.append(fpr);tp.append(tpr)
+    if len(auto_proba) > len(manual_labels):
+        auto_proba=auto_proba[:-1]
+    fp,tp,_ = roc_curve(manual_labels,auto_proba)
+
     all_detection[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp]
 
     events = mne.make_fixed_length_events(raw,id=1,duration=3)
@@ -339,7 +375,7 @@ for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_fil
         exported_pipeline.fit(data[train],labels[train])
         fp_,tp_,_ = roc_curve(labels[test],exported_pipeline.predict_proba(data[test])[:,1])
         AUC.append(roc_auc_score(labels[test],
-                  exported_pipeline.predict_proba(data[test])[:,1]))
+                  exported_pipeline.predict_proba(data[test])[:,-1]))
         fpr.append(fp_);tpr.append(tp_)
     all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr]
 
@@ -353,7 +389,12 @@ for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_fil
         fpr,tpr,_ = roc_curve(truth,detected)
         fp_.append(fpr);tp_.append(tpr)
     all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_]
-    
+all_result = [all_detection,all_ML,all_expert2]  
+pickle.dump(all_result,open('all cv results.p','wb'))  
+all_result = pickle.load(open('all cv results.p','rb'))
+all_detection,all_ML,all_expert2=all_result
+
+########### plotting ################
 fig= plt.figure(figsize=(16,16));cnt = 0;uv=1
 ax = fig.add_subplot(121)
 xx,yy,xerr,ylabel = [],[],[],[]
@@ -416,7 +457,7 @@ ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
             alpha=0.3,color='green')
 
 #ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
-lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False)
+lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False,scatterpoints=1)
 frame = lgd.get_frame()
 frame.set_facecolor('None')
 
@@ -435,7 +476,7 @@ ax_ML.set(ylabel='False positive rate',ylim=(0,1.02))
 ax_signal = fig.add_subplot(324)
 temp_auc,fp,tp = all_detection['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
-ax_signal.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_signal.plot(fp,tp,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
 ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_signal.legend(loc='best',frameon=False,prop={'size':16})
 frame = l.get_frame()
@@ -447,7 +488,7 @@ ax_signal.set(ylabel='False positive rate',ylim=(0,1.02))
 ax_expert2 = fig.add_subplot(326)
 temp_auc,fp,tp = all_expert2['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
-ax_expert2.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_expert2.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='green')
 ax_expert2.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_expert2.legend(loc='best',frameon=False,prop={'size':16})
 frame = l.get_frame()
@@ -455,6 +496,7 @@ frame.set_facecolor('None')
 ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=20)
 ax_expert2.set(ylabel='False positive rate',ylim=(0,1.02))
 ax_expert2.set_xlabel('True positive rate',fontsize=15)
+
 fig.savefig('new data comparison.png')
 
 
