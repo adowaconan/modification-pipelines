@@ -1468,10 +1468,11 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                     temp_duration.append(single_duration)
         time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
     
-    result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
-    auto_label,_ = discritized_onset_label_auto(raw,result,validation_windowsize)
+    
     decision_features=None
     if proba:
+        result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
+        auto_label,_ = discritized_onset_label_auto(raw,result,validation_windowsize)
         events = mne.make_fixed_length_events(raw,id=1,start=0,duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,preload=True)
         data = epochs.get_data()[:,:,:-1]
@@ -1873,7 +1874,7 @@ def data_gathering_pipeline(temp_dictionary,
     return temp_dictionary,sampling,labeling
 
 
-def fit_data(raw,exported_pipeline,annotation_file,cv,plot_flag=False,front=300,back=100,):
+def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,):
     data=[];
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
