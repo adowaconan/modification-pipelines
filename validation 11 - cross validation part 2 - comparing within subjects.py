@@ -123,7 +123,10 @@ exported_pipeline = make_pipeline(
     make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
     GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
         )
-exported_pipeline.fit(data,label)
+fitting_pipeline = make_pipeline(
+    make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
+    GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
+        )
 cv = KFold(n_splits=10,random_state=18374,shuffle=True)
 for file in list_file_to_read:
     sub = file.split('_')[0]
@@ -148,11 +151,18 @@ for file in list_file_to_read:
         # machine learning model export model
         print('export model model for %s' % (sub+day))
         t0=time.time()
-        all_predictions_ML[for_name]=eegPinelineDesign.fit_data(raw,exported_pipeline,
-                                          annotation_file,cv=cv,plot_flag=True)
+        if sub != 'suj23':
+            all_predictions_ML[for_name]=eegPinelineDesign.fit_data(raw,exported_pipeline,
+                                          annotation_file,cv=cv)
+        else:
+            print('alternative')
+            fitting_pipeline.fit(data,label)
+            all_predictions_ML[for_name]=eegPinelineDesign.fit_data(raw,fitting_pipeline,
+                                          annotation_file,cv=cv,few=True)
+        
         t1=time.time()
         running_time_ML[for_name]=t1-t0
-        print('export pipeline cv time: %.2f s'%(t1-t0))
+        print('export pipeline cv time: %.2f s, auc: %.2f'%(t1-t0,np.mean(all_predictions_ML[for_name][0])))
 
         # machine learning model randomforest
         """
@@ -174,7 +184,7 @@ for file in list_file_to_read:
                                                                                     l,h,annotation_file)
         t1=time.time()
         running_time_signal_process[for_name]=t1-t0
-        print('my model cv time: %.2f s'%(t1-t0))
+        print('my model cv time: %.2f s, auc: %.2f'%(t1-t0,np.mean(all_detections[for_name][0])))
         
             
     else:
@@ -185,7 +195,7 @@ pickle.dump([running_time_signal_process,running_time_ML,running_time_randomfore
 
                    
 result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
-all_detections,all_predictions_ML,all_predictions_randomforest = result
+all_detections,all_predictions_ML = result
 exported_pipeline = make_pipeline(
     make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
     GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
@@ -254,6 +264,7 @@ frame = lgd.get_frame()
 frame.set_facecolor('None')
 fig.savefig('%ssubplots'%folder)
 #fig.savefig('%sindividual performance signal processing compared to KNN.png'%folder)
+fig.savefig('%sindividual performance subplots.png'%folder)
 ######################################################################################
 
 
@@ -332,7 +343,7 @@ sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
             label='Individual performance_thresholding')
 ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+4),
-           label='Thresholding performance: %.3f'%xx.mean())
+           label='Thresholding performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+4),
             alpha=0.3,color='blue')
@@ -343,23 +354,7 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         )
 ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
 ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
-#xx,yy,xerr,ylabel = [],[],[],[];cnt=0
-#for keys, item in all_predictions_randomforest.items():
-#    yy.append(cnt+0.1)
-#    xx.append(np.mean(item))
-#    xerr.append(np.std(item))
-#    ylabel.append(keys)
-#    cnt += 1
-#xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
-##sortIdx = np.argsort(xx)
-#ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='black',
-#            label='individual performance_randomforest')
-#ax.axvline(xx.mean(),color='black',
-#           label='randomforest performance: %.3f'%xx.mean())
-#ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
-#           xx.mean()+xx.std()/np.sqrt(len(xx)),
-#            alpha=0.3,color='black')
-#from mpl_toolkits.axes_grid.inset_locator import inset_axes
+
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_predictions_ML.items():
     yy.append(cnt)
@@ -373,7 +368,7 @@ ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
             label='Individual performance_ML')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+4),
-           label='Machine learning performance: %.3f'%xx.mean(),color='red')
+           label='Machine learning performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+4),
             alpha=0.3,color='red')
@@ -389,23 +384,23 @@ select = np.random.choice(np.arange(10),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
 ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
 ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-l=ax_ML.legend(loc='best',frameon=False,prop={'size':16})
+l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_ML.set_title('Machine learning model of \nsubject %d day %d'%(6,2),fontweight='bold',fontsize=20)
-ax_ML.set(ylabel='False positive rate',ylim=(0,1.02))
+ax_ML.set(ylabel='True positive rate',ylim=(0,1.02))
 
 ax_signal = fig.add_subplot(224)
-temp_auc,fp,tp = all_detections['suj20day1']
+temp_auc,fp,tp = all_detections['suj6day2']
 fp,tp = np.array(fp),np.array(tp)
-ax_signal.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_signal.plot(fp,tp,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
 ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-ax_signal.legend(loc='best',frameon=False,prop={'size':16})
+ax_signal.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
-ax_signal.set(ylabel='False positive rate',ylim=(0,1.02))
-ax_signal.set_xlabel('True positive rate',fontsize=15)
+ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_signal.set_xlabel('False positive rate',fontsize=15)
 
 
 #fig.tight_layout()

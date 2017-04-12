@@ -1356,7 +1356,7 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
     return time_find,mean_peak_power,Duration,peak_time,peak_at
 def thresholding_filterbased_spindle_searching(raw,channelList,annotations,moving_window_size=200,lower_threshold=.9,
                                         syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
-                                        front=300,back=100,sleep_stage=True,proba=False,validation_windowsize=3):
+                                        front=300,back=100,sleep_stage=True,proba=False,validation_windowsize=3,l_freq=11,h_freq=16):
     
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -1473,7 +1473,7 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
     if proba:
         result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
         auto_label,_ = discritized_onset_label_auto(raw,result,validation_windowsize)
-        events = mne.make_fixed_length_events(raw,id=1,start=0,duration=validation_windowsize)
+        events = mne.make_fixed_length_events(raw,id=1,start=front,stop=raw.times[-1]-back,duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,preload=True)
         data = epochs.get_data()[:,:,:-1]
         full_prop=[]        
@@ -1491,7 +1491,7 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                 
             
             full_prop.append(temp_p)
-        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=11,fmax=16,tmin=0,tmax=3,low_bias=True,)
+        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=l_freq,fmax=h_freq,tmin=0,tmax=3,low_bias=True,)
         psds = 10* np.log10(psds)
         features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
         decision_features = StandardScaler().fit_transform(features.values,auto_label)
@@ -1513,8 +1513,8 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
         a = np.logical_or((intervalCheck(time_interval,spindle_start)),
                            (intervalCheck(time_interval,spindle_end)))
         return a
-def discritized_onset_label_manual(raw,df,spindle_segment):
-    discritized_continuous_time = np.arange(0,raw.times[-1],step=spindle_segment)
+def discritized_onset_label_manual(raw,df,spindle_segment,front=300,back=100):
+    discritized_continuous_time = np.arange(front,raw.times[-1]-back,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -1526,9 +1526,9 @@ def discritized_onset_label_manual(raw,df,spindle_segment):
             if spindle_comparison(time_interval,spindle,spindle_segment):
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels,temp
-def discritized_onset_label_auto(raw,df,spindle_segment):
+def discritized_onset_label_auto(raw,df,spindle_segment,front=300,back=100):
     spindle_duration = df['Duration'].values
-    discritized_continuous_time = np.arange(0,raw.times[-1],step=spindle_segment)
+    discritized_continuous_time = np.arange(front,raw.times[-1]-back,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
     discritized_time_intervals = np.array(discritized_time_intervals).T
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
@@ -1874,7 +1874,7 @@ def data_gathering_pipeline(temp_dictionary,
     return temp_dictionary,sampling,labeling
 
 
-def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,):
+def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False):
     data=[];
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
@@ -1890,27 +1890,28 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,):
 
     
 
-    try:
-        print('doing fit prediction')
+    if few:
+        print('too few spindle for fiting')
         fpr,tpr=[],[];AUC=[]
-        for train, test in cv.split(data):
-            exported_pipeline.fit(data[train,:],manual_labels[train])
-            #predictions.append(exported_pipeline.predict(data[train,:]))
+        #cv = KFold(n_splits=10,random_state=123345,shuffle=True)
+        for ii in range(10):
+            test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
+            while sum(manual_labels[test]) < 1:
+                test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
+            #exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
             AUC.append(roc_auc_score(manual_labels[test],
                       exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
         return AUC,fpr,tpr
-    except:
-        print('too few spindle for fiting')
+    else:
+        print('doing fit prediction')
         fpr,tpr=[],[];AUC=[]
-        cv = KFold(n_splits=10,random_state=0,shuffle=True)
         for train, test in cv.split(data):
-            #exported_pipeline.fit(data[train,:],manual_labels[train])
-            #predictions.append(exported_pipeline.predict(data[train,:]))
-            fp,tp,_ = roc_curve(manual_labels[train],exported_pipeline.predict_proba(data[train])[:,1])
-            AUC.append(roc_auc_score(manual_labels[train],
-                      exported_pipeline.predict_proba(data[train])[:,1]))
+            exported_pipeline.fit(data[train,:],manual_labels[train])
+            fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+            AUC.append(roc_auc_score(manual_labels[test],
+                      exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
         return AUC,fpr,tpr
     

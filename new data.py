@@ -146,7 +146,7 @@ def new_data_pipeline(raw,annotation_file_name,Hypnogram_file_name,
         full_prop=[]        
         for d in data:    
             
-            rms = eegPinelineDesign.window_rms(d[0,:],500)
+            rms = eegPinelineDesign.window_rms(d[0,:],moving_window_size)
             l = eegPinelineDesign.trim_mean(rms,0.05) + lower_threshold * eegPinelineDesign.trimmed_std(rms,0.05)
             h = eegPinelineDesign.trim_mean(rms,0.05) + higher_threshold * eegPinelineDesign.trimmed_std(rms,0.05)
             temp_p = (sum(rms>l)+sum(rms<h))/(sum(rms<h) - sum(rms<l))
@@ -471,7 +471,7 @@ l=ax_ML.legend(loc='best',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_ML.set_title('Machine learning model of \nexcerpt1',fontweight='bold',fontsize=20)
-ax_ML.set(ylabel='False positive rate',ylim=(0,1.02))
+ax_ML.set(ylabel='True positive rate',ylim=(0,1.02))
 
 ax_signal = fig.add_subplot(324)
 temp_auc,fp,tp = all_detection['excerpt1']
@@ -482,7 +482,7 @@ ax_signal.legend(loc='best',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
-ax_signal.set(ylabel='False positive rate',ylim=(0,1.02))
+ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
 #ax_signal.set_xlabel('True positive rate',fontsize=15)
 
 ax_expert2 = fig.add_subplot(326)
@@ -494,8 +494,8 @@ ax_expert2.legend(loc='best',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=20)
-ax_expert2.set(ylabel='False positive rate',ylim=(0,1.02))
-ax_expert2.set_xlabel('True positive rate',fontsize=15)
+ax_expert2.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_expert2.set_xlabel('False positive rate',fontsize=15)
 
 fig.savefig('new data comparison.png')
 
