@@ -31,7 +31,7 @@ l,h = (11,16);
 low, high=11,16
 hh=3.5
 front=300;back=100;total=front+back
-if True:
+if False:
     for file in list_file_to_read:
         sub = file.split('_')[0]
         if int(sub[3:]) >= 11:
@@ -117,39 +117,39 @@ order=['Subject 5_day2',
        'Subject 6_day1', 'Subject 6_day2', 'Subject 8_day1',
        'Subject 8_day2', 'Subject 9_day1', 'Subject 9_day2',
        'Subject 10_day1', 'Subject 10_day2']            
-fig, ax = plt.subplots(figsize=(28,30),nrows=2)        
+fig, ax = plt.subplots(figsize=(20,25),nrows=2)        
 new = pd.concat(all_sub['new'])
 old = pd.concat(all_sub['old'])
 ax[0]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=old,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[0],scale='area',scale_hue=True,
                     order=order,palette={"Automated": "#2976bb", "Manual": "#20c073"})
-ax[0].set(xlim=(0,4000),xlabel='Time (Sec)',
+ax[0].set(xlim=(0,4000),xlabel='',
             ylabel='')  
 ax[0].set_title('Long recordings',fontweight='bold')
-lgd1=ax[0].legend(prop={'size':18})
+lgd1=ax[0].legend(prop={'size':26})
 ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
                 palette={"Automated": "#2976bb", "Manual": "#20c073"})
 ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
             ylabel='')
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(loc='best',prop={'size':22})
+lgd2=ax[1].legend(loc='best',prop={'size':20})
 fig.tight_layout()       
 fig.savefig('manu vs auto.png')       
         
         
 #manual_only = pd.concat(manual_only)
 order=['Subject 5', 'Subject 6', 'Subject 8', 'Subject 9','Subject 10']
-f, ax = plt.subplots(figsize=(28,30),nrows=2)        
+f, ax = plt.subplots(figsize=(20,25),nrows=2)        
 new = pd.concat(manual_only['new'])
 old = pd.concat(manual_only['old'])
 ax[0]=sns.violinplot(y='Sub',x='Onset',hue='day',data=old,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[0],scale='area',scale_hue=True,
                     order=order,palette={"day1": "#2976bb", "day2": "#20c073"})
-ax[0].set(xlim=(0,4000),xlabel='Time (Sec)',
+ax[0].set(xlim=(0,4000),xlabel='',
             ylabel='')
 ax[0].set_title('Long recordings',fontweight='bold')  
-lgd1=ax[0].legend(prop={'size':18})  
+lgd1=ax[0].legend(prop={'size':28})  
 ax[1]=sns.violinplot(y='Sub',x='Onset',hue='day',data=new,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
                     palette={"day1": "#2976bb", "day2": "#20c073"})  
@@ -157,7 +157,7 @@ ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
             ylabel='')
 handles, labels = ax[1].get_legend_handles_labels()
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':22})
+lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':28})
 fig.tight_layout()
 f.savefig('manu only.png',bbox_inches = 'tight')      
         

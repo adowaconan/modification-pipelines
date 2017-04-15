@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.rcParams.update({'font.size':22})
 matplotlib.rcParams['legend.numpoints'] = 1
 
+
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.feature_selection import SelectFwe, f_classif
 from sklearn.naive_bayes import BernoulliNB
@@ -195,7 +196,16 @@ pickle.dump([running_time_signal_process,running_time_ML,running_time_randomfore
 
                    
 result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
-all_detections,all_predictions_ML = result
+df = {'ML':[],'threshold':[]}
+all_detections,all_predictions_ML,_ = result 
+for (key1, ML),(key2, detect) in zip(all_predictions_ML.items(),all_detections.items()):
+    df['ML'].append(ML[0])
+    df['threshold'].append(detect[0])
+    
+df['ML']=np.concatenate(df['ML'])
+df['threshold']=np.concatenate(df['threshold'])
+
+
 exported_pipeline = make_pipeline(
     make_union(VotingClassifier([("est", DecisionTreeClassifier())]), FunctionTransformer(lambda X: X)),
     GradientBoostingClassifier(learning_rate=0.24, max_features=0.24, n_estimators=500)
@@ -295,7 +305,7 @@ fig.savefig('%sindividual performance subplots.png'%folder)
 #_=ax.legend(loc='best')
 #fig.savefig('%sindividual performance machine learning_randomforest.png'%folder)
 
-fig, ax = plt.subplots(figsize=(16,16));cnt = 0
+fig, ax = plt.subplots(figsize=(20,16));cnt = 0
 xx,yy,xerr,ylabel = [],[],[],[]
 for keys, (item,fpr,tpr) in all_detections.items():
     yy.append(cnt)
@@ -329,10 +339,11 @@ fig.savefig('%sindividual performance signal processing (itself).png'%folder)
 #exported_pipeline = joblib.load('%smy_model.pkl'%folder)
 #cv = KFold(n_splits=10,random_state=18374,shuffle=True)
 # put them together
-fig= plt.figure(figsize=(16,16));cnt = 0
+fig= plt.figure(figsize=(20,16));cnt = 0
 ax = fig.add_subplot(121)
-xx,yy,xerr,ylabel = [],[],[],[]
+xx,yy,xerr,ylabel,kk = [],[],[],[],[]
 for keys, (item,fpr,tpr) in all_detections.items():
+    kk.append(keys)
     yy.append(cnt+0.1)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -355,8 +366,9 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
 ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
 ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
 
-xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
+xx,yy,xerr,ylabel,k = [],[],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_predictions_ML.items():
+    k.append(keys)
     yy.append(cnt)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -379,7 +391,7 @@ frame = lgd.get_frame()
 frame.set_facecolor('None')
 
 ax_ML = fig.add_subplot(222)
-AUC,fpr,tpr = all_predictions_ML['suj6day2']
+AUC,fpr,tpr = all_predictions_ML['suj22day1']
 select = np.random.choice(np.arange(10),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
 ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
@@ -387,18 +399,18 @@ ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_ML.set_title('Machine learning model of \nsubject %d day %d'%(6,2),fontweight='bold',fontsize=20)
+ax_ML.set_title('Machine learning pipeline of \nsubject %d day %d'%(22,1),fontweight='bold',fontsize=20)
 ax_ML.set(ylabel='True positive rate',ylim=(0,1.02))
 
 ax_signal = fig.add_subplot(224)
-temp_auc,fp,tp = all_detections['suj6day2']
+temp_auc,fp,tp = all_detections['suj22day1']
 fp,tp = np.array(fp),np.array(tp)
 ax_signal.plot(fp,tp,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
 ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_signal.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
+ax_signal.set_title('Filter based and thresholding pipeline',fontweight='bold',fontsize=20)
 ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
 ax_signal.set_xlabel('False positive rate',fontsize=15)
 

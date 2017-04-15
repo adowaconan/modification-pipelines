@@ -17,7 +17,7 @@ eegPinelineDesign.change_file_directory('D:\\NING - spindle\\allData')
 channelList = ['F3','F4','C3','C4','O1','O2']
 raw = mne.io.read_raw_fif('suj29_l2nap_day2.fif',preload=True)
 raw.pick_channels(channelList)
-l,h = (11,16);threshold=0.5;hh=3.
+l,h = (11,16);threshold=0.4;hh=3.4
 raw.filter(l,h)
 file='suj29_l2nap_day2.fif'
 annotation_file=['D:\\NING - spindle\\allData\\annotation\\suj29_nap_day2_edited_annotations.txt']
@@ -49,18 +49,22 @@ result['Annotation'] = 'auto spindle'
 result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 100)]
 result = result[result.Onset > 100]
 Time_ = result.Onset.values
+
+
 time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
 RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
-#color=['green','red','blue','black','yellow','orange']
-color = plt.cm.viridis(np.linspace(0.4,.5,12))
-fig, (ax,ax1,ax2) = plt.subplots(figsize=(20,20),nrows=3,sharex=True)
+color=['green','red','blue','black','yellow','orange']
+#color =  plt.cm.coolwarm
+fig, (ax,ax1,ax2) = plt.subplots(figsize=(20,10),nrows=3,sharex=True)
 for ii, names in enumerate(channelList):
     segment,_ = raw[ii,:]
     RMS[ii,:] = eegPinelineDesign.window_rms(segment[0,:],500) 
     ax.plot(time,RMS[ii,:],label=names,alpha=0.3,color=color[ii])
-    ax2.plot(time,segment[0,:],label=names,alpha=0.2,color=color[ii])
-    mph = eegPinelineDesign.trim_mean(RMS[ii,100000:-30000],0.05) + threshold * eegPinelineDesign.trimmed_std(RMS[ii,:],0.05)
+    ax2.plot(time,segment[0,:],label=names,alpha=0.1,color=color[ii])
+    mph = eegPinelineDesign.trim_mean(RMS[ii,300000:-100000],0.05) + threshold * eegPinelineDesign.trimmed_std(RMS[ii,300000:-100000],0.05)
+    mpl = eegPinelineDesign.trim_mean(RMS[ii,300000:-100000],0.05) + hh * eegPinelineDesign.trimmed_std(RMS[ii,300000:-100000],0.05)
     ax.axhline(mph,color='red',alpha=.3)# higher sd = more strict criteria
+    ax.axhline(mpl,color='black',alpha=0.3)
     #mpl = eegPinelineDesign.trim_mean(RMS[ii,100000:-30000],0.05) + hh * eegPinelineDesign.trimmed_std(RMS[ii,:],0.05)
     ax.scatter(Time_,np.ones(len(Time_))*mph+0.1*mph,marker='s',color='blue')
                 
@@ -68,20 +72,23 @@ ax.set(ylabel='RMS',xlim=(time[0],time[-1]))
 ax.set_title('Root-mean-square of individual channels',fontsize=22,fontweight='bold')
 ax.legend(ncol=6,prop={'size':20})
 RMS_mean=stats.hmean(RMS)
-mph = eegPinelineDesign.trim_mean(RMS_mean[100000:-30000],0.05) + threshold * eegPinelineDesign.trimmed_std(RMS_mean,0.05)
+mph = eegPinelineDesign.trim_mean(RMS_mean[300000:-100000],0.05) + threshold * eegPinelineDesign.trimmed_std(RMS_mean[300000:-100000],0.05)
+mpl = eegPinelineDesign.trim_mean(RMS_mean[300000:-100000],0.05) + hh * eegPinelineDesign.trimmed_std(RMS_mean[300000:-100000],0.05)
 ax1.plot(time,RMS_mean,color='black',alpha=0.4)
 ax1.scatter(Time_,np.ones(len(Time_))*mph+0.1*mph,marker='s',color='blue',alpha=1.)  
 ax1.axhline(mph,color='red',alpha=.3)
+ax1.axhline(mpl,color='black',alpha=0.3)
 ax1.set_title('Average root-mean-square of all channels',fontsize=22,fontweight='bold')              
 ax1.set(ylabel='RMS')
-ax2.scatter(Time_,np.zeros(len(Time_)),marker='s',color='blue',alpha=1.)
+ax2.scatter(Time_,np.zeros(len(Time_)),marker='s',color='blue',alpha=1.,s=60)
 ax2.set_title('Bandpass EEG signal between 11 - 16 Hz',fontsize=22,fontweight='bold')
 ax2.legend(ncol=6,prop={'size':20})
 ax2.set(ylabel='$\mu$V',xlabel='Time (Sec)')
+ax.set(ylim=(0,50));ax1.set(ylim=(0,25))
 anno = annotation[annotation.Annotation == 'spindle']['Onset']
 gold_standard = eegPinelineDesign.read_annotation(raw,annotation_file)
-manual_labels = eegPinelineDesign.discritized_onset_label_manual(raw,gold_standard,4)# this is step windowsize
-auto_labels,discritized_time_intervals = eegPinelineDesign.discritized_onset_label_auto(raw,result,4)# this is step windowsize, must be the same
+manual_labels,_ = eegPinelineDesign.discritized_onset_label_manual(raw,gold_standard,3)# this is step windowsize
+auto_labels,discritized_time_intervals = eegPinelineDesign.discritized_onset_label_auto(raw,result,3)# this is step windowsize, must be the same
 comparedRsult = manual_labels - auto_labels
 idx_hit = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 1)))[0]
 idx_CR  = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 0)))[0]
@@ -115,7 +122,9 @@ for jj, (time_interval_1,time_interval_2) in enumerate(discritized_time_interval
 for timeStamp in anno.values:
     ax2.annotate('',(timeStamp,-10),(timeStamp,0),arrowprops={'arrowstyle':'<-'},color='k')
 
+ax2.set(xlim=(800,900),ylim=(-60,50))
 fig.tight_layout()
+fig.savefig('D:\\NING - spindle\\training set\\example.png')
 table = pd.concat(table)
 table = table[['Onset','Duration','Annotation']]
 #table.to_csv('sub11_day2.txt',index=False)
