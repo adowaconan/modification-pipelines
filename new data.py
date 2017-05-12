@@ -330,6 +330,7 @@ fif_files = [f for f in os.listdir() if ('fif' in f)]
 spindle_files = [f for f in os.listdir() if ('scoring1' in f)]
 hypno_files = [f for f in os.listdir() if ('Hypnogram' in f)]
 expert2_files = [f for f in os.listdir() if ('scoring2' in f)]
+automate_files = [f for f in os.listdir() if ('Automatic' in f)]
 idx_files = np.concatenate([np.ones(6),np.zeros(2)])
 raws=[]
 cv = KFold(n_splits=5,random_state=0,shuffle=True)
@@ -337,8 +338,8 @@ for raw_fif in fif_files[:-2]:
     a=mne.io.read_raw_fif(raw_fif,preload=True)
     a.filter(11,16)
     raws.append(a)
-all_detection={};all_ML = {};all_expert2={}
-for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_files,expert2_files):
+all_detection={};all_ML = {};all_expert2={};all_automate={}
+for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_files,hypno_files,expert2_files,automate_files):
     result,_,auto_labels,manual_labels,discritized_times_intervals,auto_proba = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
                                    lower_threshold=best_low,higher_threshold=best_high)
     temp_auc = [];fp=[];tp=[]
@@ -389,13 +390,26 @@ for raw,spindle_file,hypno_file,expert2_file in zip(raws,spindle_files,hypno_fil
         fpr,tpr,_ = roc_curve(truth,detected)
         fp_.append(fpr);tp_.append(tpr)
     all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_]
-all_result = [all_detection,all_ML,all_expert2]  
+
+
+    automate_spindle = np.loadtxt(auto_file,skiprows=1)
+    automate_spindle = pd.DataFrame({'Onset':automate_spindle[:,0],'Duration':automate_spindle[:,1]})
+    automate_labes, _ = discritized_onset_label_manual(raw,automate_spindle,3)
+    temp_auc__, fp__, tp__=[],[],[]
+    for train, test in cv.split(manual_labels):
+        detected, truth = automate_labes[train],manual_labels[train]
+        temp_auc__.append(roc_auc_score(truth, detected))
+        fpr, tpr, _ = roc_curve(truth, detected)
+        fp__.append(fpr);tp__.append(tpr)
+    all_automate[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc__, fp__, tp__]
+all_result = [all_detection,all_ML,all_expert2,all_automate]  
 pickle.dump(all_result,open('all cv results.p','wb'))  
+import pickle
 all_result = pickle.load(open('all cv results.p','rb'))
-all_detection,all_ML,all_expert2=all_result
+all_detection,all_ML,all_expert2,all_automate=all_result
 
 ########### plotting ################
-fig= plt.figure(figsize=(16,16));cnt = 0;uv=1
+fig= plt.figure(figsize=(16,20));cnt = 0;uv=1.2
 ax = fig.add_subplot(121)
 xx,yy,xerr,ylabel = [],[],[],[]
 for keys, (item,fpr,tpr) in all_detection.items():
@@ -409,7 +423,7 @@ sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
             label='Individual performance_thresholding')
 ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+uv),
-           label='Thresholding performance: %.3f'%xx.mean())
+           label='Thresholding performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
             alpha=0.3,color='blue')
@@ -418,8 +432,8 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         ylabel='Subjects',
         ylim=(-0.5,len(ylabel)+uv),
         )
-ax.set_title('Individual model comparison results:\ncv=5',fontsize=20,fontweight='bold')
-ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
+ax.set_title('Individual model comparison results:\ncv=5',fontsize=22,fontweight='bold')
+ax.set_xlabel('Area under the curve ',fontsize=22)
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_ML.items():
     yy.append(cnt+0.2)
@@ -433,14 +447,14 @@ ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
             label='Individual performance_ML')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
-           label='Machine learning performance: %.3f'%xx.mean(),color='red')
+           label='Machine learning performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
             alpha=0.3,color='red')
 
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_expert2.items():
-    yy.append(cnt)
+    yy.append(cnt-0.1)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
     ylabel.append(keys)
@@ -451,61 +465,152 @@ ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='green',
             label='Individual performance_expert 2')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
-           label='expert 2 performance: %.3f'%xx.mean(),color='green')
+           label='expert 2 performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='green')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
             alpha=0.3,color='green')
 
+xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
+for keys, (item,fpr,tpr) in all_automate.items():
+    yy.append(cnt)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+
+ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='black',
+            label='Individual performance_Devuyst et al., 2010')
+
+ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
+           label='Devuyst et al., 2010 performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='black')
+ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
+           xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
+            alpha=0.3,color='black')
+
 #ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
-lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False,scatterpoints=1)
+lgd =ax.legend(loc='upper left',prop={'size':15},frameon=False,scatterpoints=1)
 frame = lgd.get_frame()
 frame.set_facecolor('None')
 
-ax_ML = fig.add_subplot(322)
+ax_ML = fig.add_subplot(422)
 AUC,fpr,tpr = all_ML['excerpt1']
 select = np.random.choice(np.arange(5),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
 ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
 ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-l=ax_ML.legend(loc='best',frameon=False,prop={'size':16})
+l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_ML.set_title('Machine learning model of \nexcerpt1',fontweight='bold',fontsize=20)
+ax_ML.set_title('Machine learning model of \nexcerpt1',fontweight='bold',fontsize=22)
 ax_ML.set(ylabel='True positive rate',ylim=(0,1.02))
 
-ax_signal = fig.add_subplot(324)
+ax_signal = fig.add_subplot(424)
 temp_auc,fp,tp = all_detection['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
 ax_signal.plot(fp,tp,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
 ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-ax_signal.legend(loc='best',frameon=False,prop={'size':16})
+ax_signal.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
+ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=22)
 ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
 #ax_signal.set_xlabel('True positive rate',fontsize=15)
 
-ax_expert2 = fig.add_subplot(326)
+ax_expert2 = fig.add_subplot(426)
 temp_auc,fp,tp = all_expert2['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
 ax_expert2.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='green')
 ax_expert2.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-ax_expert2.legend(loc='best',frameon=False,prop={'size':16})
+ax_expert2.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=20)
+ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=22)
 ax_expert2.set(ylabel='True positive rate',ylim=(0,1.02))
-ax_expert2.set_xlabel('False positive rate',fontsize=15)
 
+
+ax_automate = fig.add_subplot(428)
+temp_auc,fp,tp = all_automate['excerpt1']
+fp,tp = np.array(fp),np.array(tp)
+ax_automate.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='black')
+ax_automate.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+ax_automate.legend(loc='lower right',frameon=False,prop={'size':18})
+frame = l.get_frame()
+frame.set_facecolor('None')
+ax_automate.set_title('Devuyst et al., 2011 scoring',fontweight='bold',fontsize=22)
+ax_automate.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_automate.set_xlabel('False positive rate',fontsize=22)
+
+fig.tight_layout()
 fig.savefig('new data comparison.png')
+from random import shuffle
+from scipy.stats import percentileofscore
+###### permutation test
+a = [np.mean(auc) for keys, (auc, fpr, tpr) in all_ML.items()]
+b = [np.mean(auc) for keys, (auc, fpr, tpr) in all_detection.items()]
+c = [np.mean(auc) for keys, (auc, fpr, tpr) in all_expert2.items()]
+d = [np.mean(auc) for keys, (auc, fpr, tpr) in all_automate.items()]
+ps=[]
+for tt in range(500):
+    diff = []
+    difference = np.mean(a) - np.mean(b)
+    vector_d = np.concatenate([a,b])
+    for ii in range(5000):
+        shuffle(vector_d)
+        new_a = vector_d[:6]
+        new_b = vector_d[6:]
+        diff.append(np.mean(new_a) - np.mean(new_b))
+    ps.append(min(percentileofscore(diff,difference)/100,(100-percentileofscore(diff,difference))/100))
+    
+ps_=[]
+for tt in range(500):
+    diff = []
+    difference = np.mean(a) - np.mean(c)
+    vector_d = np.concatenate([a,c])
+    for ii in range(5000):
+        shuffle(vector_d)
+        new_a = vector_d[:6]
+        new_c = vector_d[6:]
+        diff.append(np.mean(new_a) - np.mean(new_c))
+    ps_.append(min(percentileofscore(diff,difference)/100,(100-percentileofscore(diff,difference))/100))
+    
+ps__=[]
+for tt in range(500):
+    diff=[]
+    difference = np.mean(d) - np.mean(a)
+    vector_d = np.concatenate([d,a])
+    for ii in range(5000):
+        shuffle(vector_d)
+        new_d = vector_d[:6]
+        new_a = vector_d[6:]
+        diff.append(np.mean(new_d) - np.mean(new_a))
+    ps__.append(min(percentileofscore(diff,difference)/100,(100-percentileofscore(diff,difference))/100))
+
+ps___=[]
+for tt in range(500):
+    diff=[]
+    difference = np.mean(d) - np.mean(c)
+    vector_d = np.concatenate([d,a])
+    for ii in range(500):
+        shuffle(vector_d)
+        new_d = vector_d[:6]
+        new_c = vector_d[6:]
+        diff.append(np.mean(new_d) - np.mean(new_c))
+    ps___.append(min(percentileofscore(diff,difference)/100,(100-percentileofscore(diff,difference))/100))
 
 
-
-
-
-
-
-
-
-
+times =pickle.load(open('D:\\NING - spindle\\training set\\step_size_500_11_16getting_higher_threshold\\model running time.p','rb'))
+thresholding, machine,_ = times
+a, b = np.array(list(thresholding.values())),np.array(list(machine.values()))
+pss = []
+for tt in range(500):
+    diff = []
+    difference = np.mean(a) - np.mean(b)
+    vector_d = np.concatenate([a,b])
+    for ii in range (1000):
+        shuffle(vector_d)
+        new_a = vector_d[:36]
+        new_b = vector_d[36:]
+        diff.append(np.mean(new_a) - np.mean(new_b))
+    pss.append(min(percentileofscore(diff,difference)/100, (100-percentileofscore(diff,difference))/100))
 

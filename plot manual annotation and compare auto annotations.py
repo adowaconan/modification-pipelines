@@ -29,7 +29,7 @@ annotation_in_fold=[files for files in file_in_fold if ('txt' in files) and ('an
 windowSize=500;threshold=0.4;syn_channel=3
 l,h = (11,16);
 low, high=11,16
-hh=3.5
+hh=3.4
 front=300;back=100;total=front+back
 if False:
     for file in list_file_to_read:
@@ -53,10 +53,13 @@ if False:
                 raw.resample(500, npad="auto") # down sampling Karen's data
             raw.pick_channels(channelList)
             raw.filter(low,high)
-            time_find,mean_peak_power,Duration,peak_time,peak_at=eegPinelineDesign.spindle_validation_with_sleep_stage(raw=raw,channelList=channelList,
-                                                    annotations=annotations,
-                                                    moving_window_size=windowSize,threshold=threshold,
-                                            syn_channels=syn_channel,l_freq=l,h_freq=h,higher_threshold=hh)
+            time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=eegPinelineDesign.thresholding_filterbased_spindle_searching(raw,
+                                                                                                    channelList,annotations,
+                                                                                                    moving_window_size=windowSize,
+                                                                                                    lower_threshold=threshold,
+                                                                                                    syn_channels=syn_channel,l_bound=0.5,
+                                                                                                    h_bound=2,tol=0.5,higher_threshold=hh,
+                                                                                                    front=300,back=100,sleep_stage=True,)
             result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
             result['Annotation'] = 'auto spindle'
             result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
@@ -129,13 +132,13 @@ ax[0].set_title('Long recordings',fontweight='bold')
 lgd1=ax[0].legend(prop={'size':26})
 ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
-                palette={"Automated": "#2976bb", "Manual": "#20c073"})
+                palette={"Manual": "#2976bb", "Automated": "#20c073"})
 ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
             ylabel='')
 ax[1].set_title('Short recordings',fontweight='bold')
 lgd2=ax[1].legend(loc='best',prop={'size':20})
 fig.tight_layout()       
-fig.savefig('manu vs auto.png')       
+fig.savefig('manu vs auto(full).png')       
         
         
 #manual_only = pd.concat(manual_only)
@@ -159,14 +162,14 @@ handles, labels = ax[1].get_legend_handles_labels()
 ax[1].set_title('Short recordings',fontweight='bold')
 lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':28})
 fig.tight_layout()
-f.savefig('manu only.png',bbox_inches = 'tight')      
+f.savefig('manu only(full).png',bbox_inches = 'tight')      
         
-subjects=[11,12,13,14,15,16,17,18,19,20,21,22,23,26,27,28,29,30,32] # missing 12, 20, 25
+subjects=[11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,32] # missing 12, 26,27, 3
 slow = 10,12   
 slow_count=[]
 fast = 12.5,14.5
 fast_count=[]    
-
+ll = 0.4; hh = 3.4
 for ii in subjects:
     try:
         raw_file = [file for file in list_file_to_read if (str(ii) in file) and ('l2' in file) and ('fif' in file)]
@@ -176,11 +179,14 @@ for ii in subjects:
         day = raw_file[0].split('_')[-1][:4]
         raw.filter(slow[0],slow[1])
         anno_name =[file for file in annotation_in_fold if (str(ii) in file) and (day in file) ]
-        annotations=pd.read_csv(anno_name[0])
-        time_find,mean_peak_power,Duration,peak_time,peak_at=eegPinelineDesign.spindle_validation_with_sleep_stage(raw=raw,channelList=channelList,
-                                                annotations=annotations,
-                                                moving_window_size=windowSize,threshold=threshold,
-                                        syn_channels=syn_channel,l_freq=slow[0],h_freq=slow[1],higher_threshold=hh)
+        annotation=pd.read_csv(anno_name[0])
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=eegPinelineDesign.thresholding_filterbased_spindle_searching(raw,
+                                                                                                    channelList,annotation,
+                                                                                                    moving_window_size=windowSize,
+                                                                                                    lower_threshold=ll,
+                                                                                                    syn_channels=syn_channel,l_bound=0.5,
+                                                                                                    h_bound=2,tol=0.5,higher_threshold=hh,
+                                                                                                    front=300,back=100,sleep_stage=True,)
         result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
         result['Annotation'] = 'auto spindle'
         result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
@@ -197,11 +203,14 @@ for ii in subjects:
         day = raw_file[0].split('_')[-1][:4]
         raw.filter(fast[0],fast[1])
         anno_name =[file for file in annotation_in_fold if (str(ii) in file) and (day in file) ]
-        annotations=pd.read_csv(anno_name[0])
-        time_find,mean_peak_power,Duration,peak_time,peak_at=eegPinelineDesign.spindle_validation_with_sleep_stage(raw=raw,channelList=channelList,
-                                                annotations=annotations,
-                                                moving_window_size=windowSize,threshold=threshold,
-                                        syn_channels=syn_channel,l_freq=fast[0],h_freq=fast[1],higher_threshold=hh)
+        annotation=pd.read_csv(anno_name[0])
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=eegPinelineDesign.thresholding_filterbased_spindle_searching(raw,
+                                                                                                    channelList,annotation,
+                                                                                                    moving_window_size=windowSize,
+                                                                                                    lower_threshold=ll,
+                                                                                                    syn_channels=syn_channel,l_bound=0.5,
+                                                                                                    h_bound=2,tol=0.5,higher_threshold=hh,
+                                                                                                    front=300,back=100,sleep_stage=True,)
         result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
         result['Annotation'] = 'auto spindle'
         result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
@@ -214,8 +223,72 @@ for ii in subjects:
         
 fast_count = pd.DataFrame(fast_count,columns=['subject','fast spindle count','fast spindle density'])        
 slow_count = pd.DataFrame(slow_count,columns=['subject','slow spindle count','slow spindle density'])
-fast_count.to_csv('fast_spindle_info.csv')
-slow_count.to_csv('slow_spindle_info.csv')
+fast_count.to_csv('fast_spindle_info(load2).csv')
+slow_count.to_csv('slow_spindle_info(load2).csv')
+
+
+subjects=[11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,32] # missing 12, 26,27, 3
+slow = 10,12   
+slow_count=[]
+fast = 12.5,14.5
+fast_count=[]    
+ll = 0.4; hh = 3.4
+for ii in subjects:
+    try:
+        raw_file = [file for file in list_file_to_read if (str(ii) in file) and ('l5' in file) and ('fif' in file)]
+        print(raw_file[0])
+        raw = mne.io.read_raw_fif(raw_file[0],preload=True)
+        raw.pick_channels(channelList)
+        day = raw_file[0].split('_')[-1][:4]
+        raw.filter(slow[0],slow[1])
+        anno_name =[file for file in annotation_in_fold if (str(ii) in file) and (day in file) ]
+        annotation=pd.read_csv(anno_name[0])
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=eegPinelineDesign.thresholding_filterbased_spindle_searching(raw,
+                                                                                                    channelList,annotation,
+                                                                                                    moving_window_size=windowSize,
+                                                                                                    lower_threshold=ll,
+                                                                                                    syn_channels=syn_channel,l_bound=0.5,
+                                                                                                    h_bound=2,tol=0.5,higher_threshold=hh,
+                                                                                                    front=300,back=100,sleep_stage=True,)
+        result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
+        result['Annotation'] = 'auto spindle'
+        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+        result = result[result.Onset > front]    
+        slow_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - total)]) 
+    except:
+        pass
+for ii in subjects:
+    try:
+        raw_file = [file for file in list_file_to_read if (str(ii) in file) and ('l5' in file) and ('fif' in file)]
+        print(raw_file[0])
+        raw = mne.io.read_raw_fif(raw_file[0],preload=True)
+        raw.pick_channels(channelList)
+        day = raw_file[0].split('_')[-1][:4]
+        raw.filter(fast[0],fast[1])
+        anno_name =[file for file in annotation_in_fold if (str(ii) in file) and (day in file) ]
+        annotation=pd.read_csv(anno_name[0])
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=eegPinelineDesign.thresholding_filterbased_spindle_searching(raw,
+                                                                                                    channelList,annotation,
+                                                                                                    moving_window_size=windowSize,
+                                                                                                    lower_threshold=ll,
+                                                                                                    syn_channels=syn_channel,l_bound=0.5,
+                                                                                                    h_bound=2,tol=0.5,higher_threshold=hh,
+                                                                                                    front=300,back=100,sleep_stage=True,)
+        result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
+        result['Annotation'] = 'auto spindle'
+        result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+        result = result[result.Onset > front]    
+        fast_count.append([ii,len(result['Onset']),len(result['Onset'])/(raw.last_samp/raw.info['sfreq'] - total)])
+    except:
+        pass        
+        
+        
+        
+fast_count = pd.DataFrame(fast_count,columns=['subject','fast spindle count','fast spindle density'])        
+slow_count = pd.DataFrame(slow_count,columns=['subject','slow spindle count','slow spindle density'])
+fast_count.to_csv('fast_spindle_info(load5).csv')
+slow_count.to_csv('slow_spindle_info(load5).csv')
+'''
 data = pd.read_clipboard()
 vars=['WM', 'REC1', 'REC2', 'Sleep Latency', 'Total Nap time',
        'Spindle Density (Karen)', 'Spindle Count (Karen)',
@@ -250,4 +323,4 @@ ax=sns.heatmap(data[data.columns[2:]].corr(),ax=ax)
 plt.setp(ax.yaxis.get_majorticklabels(),rotation=50)
 
 sns.regplot(xvar[0],yvar[1],data=data,robust=True)
-
+'''
