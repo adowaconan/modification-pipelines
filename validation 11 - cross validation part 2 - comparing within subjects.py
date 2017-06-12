@@ -2,7 +2,7 @@
 """
 Created on Tue Feb  7 13:22:12 2017
 Update on Mon April 10 15:25:26 2017
-
+Updata on Mon June 12 11:42:33 2017
 @author: ning
 """
 
@@ -364,7 +364,7 @@ _=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
         ylim=(-0.5,len(ylabel)+4),
         )
 ax.set_title('Individual model comparison results:\ncv=10',fontsize=20,fontweight='bold')
-ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=15)
+ax.set_xlabel('Area under the curve on predicting spindles and non spindles',fontsize=17)
 
 xx,yy,xerr,ylabel,k = [],[],[],[],[];cnt = 0
 for keys, (item,fpr,tpr) in all_predictions_ML.items():
@@ -412,7 +412,7 @@ frame = l.get_frame()
 frame.set_facecolor('None')
 ax_signal.set_title('Filter based and thresholding pipeline',fontweight='bold',fontsize=20)
 ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
-ax_signal.set_xlabel('False positive rate',fontsize=15)
+ax_signal.set_xlabel('False positive rate',fontsize=17)
 
 
 #fig.tight_layout()

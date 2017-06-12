@@ -84,7 +84,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
     n_ch: index of channel list, use '-2' for excluding AUX and stimuli channels
     """
     c=200
-    raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
+    raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True,)
     if 'LOc' in raw.ch_names:
         try:
             #raw.resample(500,npad='auto')
@@ -1876,7 +1876,7 @@ def data_gathering_pipeline(temp_dictionary,
 
     return temp_dictionary,sampling,labeling
 
-
+from sklearn import metrics
 def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False):
     data=[];
     stop = raw.times[-1]-back
@@ -1895,7 +1895,7 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
 
     if few:
         print('too few spindle for fiting')
-        fpr,tpr=[],[];AUC=[]
+        fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
         #cv = KFold(n_splits=10,random_state=123345,shuffle=True)
         for ii in range(10):
             test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
@@ -1903,20 +1903,36 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
                 test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
             #exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+            confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            TN,FP,FN,TP = confM_temp.flatten()
+            sensitivity_ = TP / (TP+FN)
+            specificity_ = TN / (TN + FP)
             AUC.append(roc_auc_score(manual_labels[test],
                       exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
-        return AUC,fpr,tpr
+            confM.append(confM_temp.flatten())
+            sensitivity.append(sensitivity_)
+            specificity.append(specificity_)
+        print(metrics.classification_report(manual_labels[test],exported_pipeline.predict(data[test])))
+        return AUC,fpr,tpr,confM,sensitivity,specificity
     else:
         print('doing fit prediction')
-        fpr,tpr=[],[];AUC=[]
+        fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
         for train, test in cv.split(data):
             exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+            confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            TN,FP,FN,TP = confM_temp.flatten()
+            sensitivity_ = TP / (TP+FN)
+            specificity_ = TN / (TN + FP)
             AUC.append(roc_auc_score(manual_labels[test],
                       exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
-        return AUC,fpr,tpr
+            confM.append(confM_temp.flatten())
+            sensitivity.append(sensitivity_)
+            specificity.append(specificity_)
+        print(metrics.classification_report(manual_labels[test],exported_pipeline.predict(data[test])))
+        return AUC,fpr,tpr,confM,sensitivity,specificity
     
     return AUC,fpr,tpr
 def compute_measures(dictionary_data, label='without',plot_flag=False,n_folds=10):
@@ -2051,11 +2067,20 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
                                                                                                
     raw.close()  
     temp_auc = [];#fp=[];tp=[]
+    confM = [];sensitivity=[];specificity=[]
     if cv == None:
         cv = KFold(n_splits=10,random_state=12345,shuffle=True)
     for train, test in cv.split(manual_labels):
         detected,truth = auto_label[train],manual_labels[train]
         temp_auc.append(roc_auc_score(truth,detected))
+        confM_temp = metrics.confusion_matrix(truth,detected)
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
         
     fpr,tpr,t = roc_curve(manual_labels,auto_proba)
+    confM.append(confM_temp.flatten())
+    sensitivity.append(sensitivity_)
+    specificity.append(specificity_)
+    print(metrics.classification_report(manual_labels,auto_label))
     return temp_auc,fpr,tpr
