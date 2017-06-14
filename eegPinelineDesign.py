@@ -1904,12 +1904,14 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
             #exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
             confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            print('confusion matrix\n',confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis])
             TN,FP,FN,TP = confM_temp.flatten()
             sensitivity_ = TP / (TP+FN)
             specificity_ = TN / (TN + FP)
             AUC.append(roc_auc_score(manual_labels[test],
                       exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
+            confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
             confM.append(confM_temp.flatten())
             sensitivity.append(sensitivity_)
             specificity.append(specificity_)
@@ -1922,12 +1924,14 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
             exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
             confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            print('confusion matrix\n',confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis])
             TN,FP,FN,TP = confM_temp.flatten()
             sensitivity_ = TP / (TP+FN)
             specificity_ = TN / (TN + FP)
             AUC.append(roc_auc_score(manual_labels[test],
                       exported_pipeline.predict_proba(data[test])[:,1]))
             fpr.append(fp);tpr.append(tp)
+            confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
             confM.append(confM_temp.flatten())
             sensitivity.append(sensitivity_)
             specificity.append(specificity_)
@@ -2077,10 +2081,11 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
         TN,FP,FN,TP = confM_temp.flatten()
         sensitivity_ = TP / (TP+FN)
         specificity_ = TN / (TN + FP)
-        
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
     fpr,tpr,t = roc_curve(manual_labels,auto_proba)
-    confM.append(confM_temp.flatten())
-    sensitivity.append(sensitivity_)
-    specificity.append(specificity_)
+    
     print(metrics.classification_report(manual_labels,auto_label))
-    return temp_auc,fpr,tpr
+    return temp_auc,fpr,tpr, confM, sensitivity, specificity

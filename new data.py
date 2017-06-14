@@ -12,9 +12,11 @@ import mne
 import matplotlib.pyplot as plt
 plt.rcParams['legend.numpoints']=1
 import os
-os.chdir('DatabaseSpindles')
+os.chdir('D:\\NING - spindle\\DatabaseSpindles')
 import pandas as pd
 import random
+import seaborn as sns
+sns.set_style('white')
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import ExtraTreesClassifier, VotingClassifier
@@ -25,6 +27,8 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score,roc_curve,auc
+import pickle
+
 data_des = pd.read_csv('data description.csv',index_col=False)
 def spindle_comparison(times_interval,spindle,spindle_duration,spindle_manual=True):
     if spindle_manual:
@@ -192,11 +196,11 @@ for aa in range(10):
             for raw,spindle_file,hypno_file,train in zip(raws,spindle_files,hypno_files,idx_files):
                 if train:
                     t1=time.time()
-                    result,auc,auto,_,_=new_data_pipeline(raw,spindle_file,
+                    result,auc_,auto,manual,times,auto_proba=new_data_pipeline(raw,spindle_file,
                                                      hypno_file,moving_window_size=100,
                                                     lower_threshold=low,
                                                      higher_threshold=high)
-                    all_[str(low)+','+str(high)].append(auc)
+                    all_[str(low)+','+str(high)].append(auc_)
                     t2=time.time()
                     print(t2-t1)
     
@@ -205,9 +209,9 @@ for aa in range(10):
     for key, item in all_.items():
         low = key.split(',')[0]
         high= key.split(',')[1]
-        auc = item
-        mean_auc=np.mean(auc)
-        std_auc =np.std(auc)
+        auc_ = item
+        mean_auc=np.mean(auc_)
+        std_auc =np.std(auc_)
         validation_table['low'].append(low)
         validation_table['high'].append(high)
         validation_table['AUC_mean'].append(mean_auc)
@@ -219,11 +223,11 @@ for aa in range(10):
     AUC=[]
     for raw,spindle_file,hypno_file,train in zip(raws,spindle_files,hypno_files,test):
         if train:
-            result,auc,auto,manual,times = new_data_pipeline(raw,spindle_file,
+            result,auc_,auto,manual,times,auto_proba = new_data_pipeline(raw,spindle_file,
                                                      hypno_file,moving_window_size=100,
                                                     lower_threshold=best_low,
                                                      higher_threshold=best_high)
-            AUC.append(auc)
+            AUC.append(auc_)
     crossvalidation['low'].append(best_low)
     crossvalidation['high'].append(best_high)
     crossvalidation['AUC'].append(AUC)
@@ -315,8 +319,8 @@ for train, test in cv.split(features,label):
     exported_pipeline.fit(features[train],label[train])
     pred_proba=exported_pipeline.predict_proba(features[test])
     fpr,tpr,t= roc_curve(label[test],pred_proba[:,1])
-    auc = roc_auc_score(label[test],exported_pipeline.predict(features[test]))
-    ax.plot(fpr,tpr,label='%.2f'%auc)
+    auc_ = roc_auc_score(label[test],exported_pipeline.predict(features[test]))
+    ax.plot(fpr,tpr,label='%.2f'%auc_)
 ax.legend(loc='best')
 ax.plot([0,1],[0,1],linestyle='--',color='blue')  
 fig.savefig('machine learning (extratrees).png')  
@@ -339,21 +343,34 @@ for raw_fif in fif_files[:-2]:
     a.filter(11,16)
     raws.append(a)
 all_detection={};all_ML = {};all_expert2={};all_automate={}
+from sklearn import metrics
+from collections import Counter
 for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_files,hypno_files,expert2_files,automate_files):
     result,_,auto_labels,manual_labels,discritized_times_intervals,auto_proba = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
                                    lower_threshold=best_low,higher_threshold=best_high)
-    temp_auc = [];fp=[];tp=[]
+    temp_auc = [];fp=[];tp=[];confM=[];sensitivity=[];specificity=[]
     
     for train, test in cv.split(manual_labels):
         detected,truth = auto_labels[train],manual_labels[train]
         temp_auc.append(roc_auc_score(truth,detected))
+        confM_temp = metrics.confusion_matrix(truth,detected)
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
+        print(Counter(truth))
+        print(metrics.classification_report(truth,detected))
+        print('confusion matrix\n',confM_temp)
 #        fpr,tpr,_ = roc_curve(truth,detected)
 #        fp.append(fpr);tp.append(tpr)
     if len(auto_proba) > len(manual_labels):
         auto_proba=auto_proba[:-1]
     fp,tp,_ = roc_curve(manual_labels,auto_proba)
 
-    all_detection[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp]
+    all_detection[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp,confM,sensitivity,specificity]
 
     events = mne.make_fixed_length_events(raw,id=1,duration=3)
     epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
@@ -364,7 +381,7 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
     data = np.concatenate([data,psds,freqs],axis=2)
     data = data.reshape(len(data),-1)
     labels = manual_labels
-    fpr,tpr=[],[];AUC=[]
+    fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
     for train,test in cv.split(manual_labels):
         exported_pipeline = make_pipeline(
         make_union(
@@ -378,30 +395,64 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
         AUC.append(roc_auc_score(labels[test],
                   exported_pipeline.predict_proba(data[test])[:,-1]))
         fpr.append(fp_);tpr.append(tp_)
-    all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr]
+        confM_temp = metrics.confusion_matrix(labels[test],exported_pipeline.predict(data[test]))
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
+        print(Counter(labels[train]))
+        print(metrics.classification_report(labels[test],exported_pipeline.predict(data[test])))
+        print('confusion matrix\n',confM_temp)
+    all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr,confM,sensitivity,specificity]
 
     expert2_spindle = np.loadtxt(expert2_file,skiprows=1)
     expert2_spindle = pd.DataFrame({'Onset':expert2_spindle[:,0],'Duration':expert2_spindle[:,1]})
     expert2_labels,_ = discritized_onset_label_manual(raw,expert2_spindle,3)
-    temp_auc_,fp_,tp_=[],[],[]
+    temp_auc_,fp_,tp_=[],[],[];confM=[];sensitivity=[];specificity=[]
     for train,test in cv.split(manual_labels):
         detected,truth = expert2_labels[train],manual_labels[train]
         temp_auc_.append(roc_auc_score(truth,detected))
         fpr,tpr,_ = roc_curve(truth,detected)
+        confM_temp = metrics.confusion_matrix(truth,detected)
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
         fp_.append(fpr);tp_.append(tpr)
-    all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_]
+        print(Counter(truth))
+        print(metrics.classification_report(truth,detected))
+        print('confusion matrix\n',confM_temp)
+    all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_,confM,sensitivity,specificity]
 
 
     automate_spindle = np.loadtxt(auto_file,skiprows=1)
     automate_spindle = pd.DataFrame({'Onset':automate_spindle[:,0],'Duration':automate_spindle[:,1]})
     automate_labes, _ = discritized_onset_label_manual(raw,automate_spindle,3)
-    temp_auc__, fp__, tp__=[],[],[]
+    temp_auc__, fp__, tp__=[],[],[];confM=[];sensitivity=[];specificity=[]
     for train, test in cv.split(manual_labels):
         detected, truth = automate_labes[train],manual_labels[train]
         temp_auc__.append(roc_auc_score(truth, detected))
         fpr, tpr, _ = roc_curve(truth, detected)
         fp__.append(fpr);tp__.append(tpr)
-    all_automate[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc__, fp__, tp__]
+        confM_temp = metrics.confusion_matrix(truth,detected)
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
+        fp_.append(fpr);tp_.append(tpr)
+        print(Counter(truth))
+        print(metrics.classification_report(truth,detected))
+        print('confusion matrix\n',confM_temp)
+    all_automate[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc__, fp__, tp__,confM,sensitivity,specificity]
 all_result = [all_detection,all_ML,all_expert2,all_automate]  
 pickle.dump(all_result,open('all cv results.p','wb'))  
 import pickle
@@ -409,10 +460,10 @@ all_result = pickle.load(open('all cv results.p','rb'))
 all_detection,all_ML,all_expert2,all_automate=all_result
 
 ########### plotting ################
-fig= plt.figure(figsize=(16,20));cnt = 0;uv=1.2
-ax = fig.add_subplot(121)
+fig= plt.figure(figsize=(24,20));cnt = 0;uv=1.2
+ax = fig.add_subplot(131)
 xx,yy,xerr,ylabel = [],[],[],[]
-for keys, (item,fpr,tpr) in all_detection.items():
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detection.items():
     yy.append(cnt+0.1)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -421,21 +472,21 @@ for keys, (item,fpr,tpr) in all_detection.items():
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
-            label='Individual performance_thresholding')
+            label='FBT, individual')
 ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+uv),
-           label='Thresholding performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
+           )
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='blue')
+            alpha=0.3,color='blue',label='FBT average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
 sortylabel = [ylabel[ii] for ii in sortIdx ]
-_=ax.set(yticks = np.arange(len(ylabel)),yticklabels=sortylabel,
-        ylabel='Subjects',
-        ylim=(-0.5,len(ylabel)+uv),
-        )
-ax.set_title('Individual model comparison results:\ncv=5',fontsize=22,fontweight='bold')
-ax.set_xlabel('Area under the curve ',fontsize=22)
+_=ax.set(ylim=(-0.5,len(ylabel)+uv),)
+plt.xticks(fontsize=16)
+plt.yticks(np.arange(len(ylabel)),sortylabel,fontsize=16)
+ax.set_ylabel('Subjects',fontsize=22)
+ax.set_title('Model comparison:\ncv = 5',fontsize=22,fontweight='bold')
+ax.set_xlabel('AUC scores ',fontsize=16)
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
-for keys, (item,fpr,tpr) in all_ML.items():
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_ML.items():
     yy.append(cnt+0.2)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -444,16 +495,16 @@ for keys, (item,fpr,tpr) in all_ML.items():
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='red',
-            label='Individual performance_ML')
+            label='Machine learning, individual')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
-           label='Machine learning performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='red')
+           color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='red')
+            alpha=0.3,color='red',label='Machine learning average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
 
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
-for keys, (item,fpr,tpr) in all_expert2.items():
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_expert2.items():
     yy.append(cnt-0.1)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -462,16 +513,16 @@ for keys, (item,fpr,tpr) in all_expert2.items():
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='green',
-            label='Individual performance_expert 2')
+            label='Expert 2, individual')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
-           label='expert 2 performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='green')
+           color='green')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='green')
+            alpha=0.3,color='green',label='expert 2 average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
 
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
-for keys, (item,fpr,tpr) in all_automate.items():
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_automate.items():
     yy.append(cnt)
     xx.append(np.mean(item))
     xerr.append(np.std(item)/np.sqrt(len(item)))
@@ -480,76 +531,151 @@ for keys, (item,fpr,tpr) in all_automate.items():
 xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='black',
-            label='Individual performance_Devuyst et al., 2010')
+            label='Devuyst et al., 2010, individual')
 
 ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
-           label='Devuyst et al., 2010 performance: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),color='black')
+           color='black')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='black')
+            alpha=0.3,color='black',label='Devuyst et al., 2010 average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
 
 #ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
 lgd =ax.legend(loc='upper left',prop={'size':15},frameon=False,scatterpoints=1)
 frame = lgd.get_frame()
 frame.set_facecolor('None')
 
-ax_ML = fig.add_subplot(422)
-AUC,fpr,tpr = all_ML['excerpt1']
+ax_ML = fig.add_subplot(432)
+AUC,fpr,tpr,confM,sensitivity,specificity = all_ML['excerpt1']
 select = np.random.choice(np.arange(5),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
-ax_ML.plot(fpr,tpr,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
+sensitivity = sensitivity[select]; specificity = specificity[select]
+ax_ML.plot(fpr,tpr,label='AUC score: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
 ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_ML.set_title('Machine learning model of \nexcerpt1',fontweight='bold',fontsize=22)
-ax_ML.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_ML.set_title('excerpt1\nMachine learning model',fontweight='bold',fontsize=22)
+ax_ML.set(ylim=(0,1.02),xlim=(0,1.02))
+ax_ML.set_ylabel('True positive rate',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 
-ax_signal = fig.add_subplot(424)
-temp_auc,fp,tp = all_detection['excerpt1']
+ax_signal = fig.add_subplot(435)
+temp_auc,fp,tp,confM,sensitivity,specificity = all_detection['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
-ax_signal.plot(fp,tp,label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
+ax_signal.plot(fp,tp,label='AUC score: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
 ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_signal.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=22)
-ax_signal.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_signal.set(ylim=(0,1.02),xlim=(0,1.02))
+ax_signal.set_ylabel('True positive rate',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 #ax_signal.set_xlabel('True positive rate',fontsize=15)
 
-ax_expert2 = fig.add_subplot(426)
-temp_auc,fp,tp = all_expert2['excerpt1']
+ax_expert2 = fig.add_subplot(438)
+temp_auc,fp,tp,confM,sensitivity,specificity = all_expert2['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
-ax_expert2.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='green')
+ax_expert2.plot(fp.mean(0),tp.mean(0),label='AUC score: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='green')
 ax_expert2.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_expert2.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_expert2.set_title('Expert 2 scoring',fontweight='bold',fontsize=22)
-ax_expert2.set(ylabel='True positive rate',ylim=(0,1.02))
+ax_expert2.set(ylim=(0,1.02),xlim=(0,1.02))
+ax_expert2.set_ylabel('True positive rate',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 
-
-ax_automate = fig.add_subplot(428)
-temp_auc,fp,tp = all_automate['excerpt1']
+ax_automate = fig.add_subplot(4,3,11)
+temp_auc,fp,tp,confM,sensitivity,specificity = all_automate['excerpt1']
 fp,tp = np.array(fp),np.array(tp)
-ax_automate.plot(fp.mean(0),tp.mean(0),label='Area under the curve: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='black')
+ax_automate.plot(fp.mean(0),tp.mean(0),label='AUC score: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='black')
 ax_automate.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 ax_automate.legend(loc='lower right',frameon=False,prop={'size':18})
 frame = l.get_frame()
 frame.set_facecolor('None')
 ax_automate.set_title('Devuyst et al., 2011 scoring',fontweight='bold',fontsize=22)
-ax_automate.set(ylabel='True positive rate',ylim=(0,1.02))
-ax_automate.set_xlabel('False positive rate',fontsize=22)
+ax_automate.set(ylim=(0,1.02),xlim=(0,1.02))
+ax_automate.set_xlabel('False positive rate',fontsize=16)
+ax_automate.set_ylabel('True positive rate',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+
+ax_ML_CM = fig.add_subplot(433)
+AUC,fpr,tpr,confM,sensitivity,specificity = all_ML['excerpt1']
+select = np.random.choice(np.arange(5),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+sensitivity = sensitivity[select]; specificity = specificity[select]
+ax_ML_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+               ax=ax_ML_CM,annot=True)
+ax_ML_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+        xticklabels=['non spindle','spindle'],)
+ax_ML_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
+#cbar_ax = fig.add_axes([0.90,0.15,0.01,0.5])
+#cbar = fig.colorbar(ax_ML_CM,cax=cbar_ax)
+ax_ML_CM.set_title('excerpt1, confusion matrix\nMachine learning model',fontweight='bold',fontsize=22)
+ax_ML_CM.set_ylabel('True label',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+
+ax_signal_CM = fig.add_subplot(436)
+AUC,fpr,tpr,confM,sensitivity,specificity = all_detection['excerpt1']
+select = np.random.choice(np.arange(5),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+sensitivity = sensitivity[select]; specificity = specificity[select]
+ax_signal_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+               ax=ax_signal_CM,annot=True)
+ax_signal_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+       xticklabels=['non spindle','spindle'],)
+ax_signal_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
+ax_signal_CM.set_title('Filter based and thresholding model',fontweight='bold',fontsize=22)
+ax_signal_CM.set_ylabel('True label',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+
+ax_expert2_CM = fig.add_subplot(439)
+AUC,fpr,tpr,confM,sensitivity,specificity = all_expert2['excerpt1']
+select = np.random.choice(np.arange(5),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+sensitivity = sensitivity[select]; specificity = specificity[select]
+ax_expert2_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+               ax=ax_expert2_CM,annot=True)
+ax_expert2_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+       xticklabels=['non spindle','spindle'],)
+ax_expert2_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
+ax_expert2_CM.set_title('Expert 2 scoring',fontweight='bold',fontsize=22)
+ax_expert2_CM.set_ylabel('True label',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+
+ax_automate_CM = fig.add_subplot(4,3,12)
+AUC,fpr,tpr,confM,sensitivity,specificity = all_automate['excerpt1']
+select = np.random.choice(np.arange(5),size=1)[0]
+fpr = fpr[select];tpr = tpr[select]
+sensitivity = sensitivity[select]; specificity = specificity[select]
+ax_automate_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+               ax=ax_automate_CM,annot=True)
+ax_automate_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+       xticklabels=['non spindle','spindle'],)
+ax_automate_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
+ax_automate_CM.set_title('Devuyst et al., 2011 scoring',fontweight='bold',fontsize=22)
+ax_automate_CM.set_ylabel('True label',fontsize=16)
+ax_automate_CM.set_xlabel('Predicted label',fontsize=16)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 
 fig.tight_layout()
-fig.savefig('new data comparison.png')
+fig.savefig('new data comparison (edit).png')
 from random import shuffle
 from scipy.stats import percentileofscore
 ###### permutation test
-a = [np.mean(auc) for keys, (auc, fpr, tpr) in all_ML.items()]
-b = [np.mean(auc) for keys, (auc, fpr, tpr) in all_detection.items()]
-c = [np.mean(auc) for keys, (auc, fpr, tpr) in all_expert2.items()]
-d = [np.mean(auc) for keys, (auc, fpr, tpr) in all_automate.items()]
+a = [np.mean(auc_) for keys, (auc_, fpr, tpr) in all_ML.items()]
+b = [np.mean(auc_) for keys, (auc_, fpr, tpr) in all_detection.items()]
+c = [np.mean(auc_) for keys, (auc_, fpr, tpr) in all_expert2.items()]
+d = [np.mean(auc_) for keys, (auc_, fpr, tpr) in all_automate.items()]
 ps=[]
 for tt in range(500):
     diff = []
