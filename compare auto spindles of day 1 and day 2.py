@@ -71,13 +71,16 @@ ax.legend()
 #spindles = np.array(spindles)
 ps=[]
 for aa in range(500):
-    difference = np.mean(spindles[1,:] - spindles[0,:])
-    vector_spindles = spindles.flatten()
+    difference = np.mean(spindles[0,:,1]) - np.mean(spindles[1,:,1])
+    shape_1 = len(spindles[0,:,1])
+    vector_spindles = np.concatenate([spindles[0,:,1],spindles[1,:,1]])
     diff = []
-    for ii in range(5000):
+    for ii in range(500):
         shuffle(vector_spindles)
-        permu_spindle = vector_spindles.reshape(spindles.shape)
-        diff.append(np.mean(permu_spindle[1,:] - permu_spindle[0,:]))
+        permu_spindle = vector_spindles
+        new_a = permu_spindle[:shape_1]
+        new_b = permu_spindle[shape_1:]
+        diff.append(np.mean(new_a) - np.mean(new_b))
     ps.append((100-percentileofscore(diff,difference))/100)
 fig, ax = plt.subplots(figsize=(8,5))
 ax.hist(ps,bins=50,color='blue',label='p values')

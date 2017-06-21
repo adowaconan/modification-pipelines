@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams.update({'font.size':22})
 matplotlib.rcParams['legend.numpoints'] = 1
+plt.rc('font',weight='bold',size=16)
 
 
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
@@ -367,10 +368,11 @@ ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
             alpha=0.3,color='blue',label='FBT average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
 sortylabel = [ylabel[ii] for ii in sortIdx ]
 _=ax.set(ylim=(-0.5,len(ylabel)+4),)
-ax.set_ylabel('Subjects',fontsize=16)
+plt.xticks(fontsize=16,fontweight='bold')
+ax.set_ylabel('Subjects',fontsize=20,fontweight='bold')
 plt.yticks(np.arange(len(ylabel)),sortylabel,fontsize=16)
-ax.set_title('Model comparison:\ncv=10',fontsize=20,fontweight='bold')
-ax.set_xlabel('AUC scores',fontsize=17)
+ax.set_title('Model comparison:\ncv=5',fontsize=20,fontweight='bold')
+ax.set_xlabel('AUC scores',fontsize=20,fontweight='bold')
 
 xx,yy,xerr,ylabel,k = [],[],[],[],[];cnt = 0
 for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
@@ -403,9 +405,9 @@ ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
 l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_ML.set_title('subject %d day %d\nMachine learning model'%(22,1),fontweight='bold',fontsize=20)
+ax_ML.set_title('subject %d day %d, ROC AUC\nMachine learning model'%(22,1),fontweight='bold',fontsize=20)
 ax_ML.set(ylim=(0,1.02),xlim=(0,1.02))
-ax_ML.set_ylabel('True positive rate',fontsize=16)
+ax_ML.set_ylabel('True positive rate',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
@@ -419,8 +421,8 @@ frame = l.get_frame()
 frame.set_facecolor('None')
 ax_signal.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
 ax_signal.set(ylim=(0,1.02),xlim=(0,1.02))
-ax_signal.set_ylabel('True positive rate',fontsize=16)
-ax_signal.set_xlabel('False positive rate',fontsize=17)
+ax_signal.set_ylabel('True positive rate',fontsize=20,fontweight='bold')
+ax_signal.set_xlabel('False positive rate',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
@@ -429,12 +431,12 @@ AUC,fpr,tpr,confM,sensitivity,specificity = all_predictions_ML['suj22day1']
 select = np.random.choice(np.arange(5),size=1)[0]
 fpr = fpr[select];tpr = tpr[select]
 ax_ML_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
-               ax=ax_ML_CM,annot=True)
+               ax=ax_ML_CM,annot=True,annot_kws={'fontsize':20})
 ax_ML_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
         xticklabels=['non spindle','spindle'],)
 ax_ML_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
 ax_ML_CM.set_title('subject %d day %d, confusion matrix\nMachine learning model'%(22,1),fontweight='bold',fontsize=20)
-ax_ML_CM.set_ylabel('True label',fontsize=16)
+ax_ML_CM.set_ylabel('True label',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
@@ -442,26 +444,223 @@ ax_signal_CM = fig.add_subplot(236)
 temp_auc,fp,tp,confM,sensitivity,specificity = all_detections['suj22day1']
 fp,tp = np.array(fp),np.array(tp)
 ax_signal_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
-               ax=ax_signal_CM,annot=True)
+               ax=ax_signal_CM,annot=True,annot_kws={'fontsize':20})
 ax_signal_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
         xticklabels=['non spindle','spindle'],)
 ax_signal_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
 ax_signal_CM.set_title('Filter based and thresholding model',fontweight='bold',fontsize=20)
-ax_signal_CM.set_ylabel('True label',fontsize=16,)
-ax_signal_CM.set_xlabel('Predicted label',fontsize=16)
+ax_signal_CM.set_ylabel('True label',fontsize=20,fontweight='bold')
+ax_signal_CM.set_xlabel('Predicted label',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
-
+fig.get_axes()[0].annotate('(a)',(0.35,45.01),fontsize=26)
+fig.get_axes()[1].annotate('(b)',(0.05,1.02),fontsize=26)
+fig.get_axes()[3].annotate('(c)',(0.05,2.0),fontsize=26)
 #fig.tight_layout()
 fig.savefig('%sindividual performance (2 models) (edited).png'%folder, bbox_inches='tight')
 
 
 #################################################################################
-fig,axes = plt.subplots(nr)
+import seaborn as sns
+sns.set_style('white')
+result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
+all_detections,all_predictions_ML,_ = result 
 
+plt.close('all')
+fig = plt.figure(figsize=(24,28));cnt = 0
+xx,yy,xerr,ylabel,kk = [],[],[],[],[]
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    kk.append(keys)
+    yy.append(cnt+0.1)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+sortIdx = np.argsort(xx)
+sortylabel = [ylabel[ii] for ii in sortIdx[::-1] ]
+for cnt,keys in enumerate(sortylabel):
+    ax = fig.add_subplot(6,7,cnt+1)
+    item,fpr,tpr,confM,sensitivity,specificity = all_detections[keys]
+    ax=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+                   ax=ax,annot=True)
+    ax.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+        xticklabels=['non spindle','spindle'],)
+    ax.set_yticklabels(['spindle','non spindle'],rotation=90)
+    ax.set_title(keys,fontsize=16,fontweight='bold')
+    if cnt % 7 ==0:
+        ax.set_ylabel('True label',fontweight='bold',fontsize=16)
+    if cnt > 34:
+        ax.set_xlabel('Predicted label',fontweight='bold',fontsize=16)
+fig.suptitle('Confusion matrix\nFilter based and thresholding model',y=1.015,fontweight='bold')
+fig.tight_layout()
+fig.savefig('%sconfusion matrix individual thresholding.png'%folder, bbox_inches='tight')
 
+plt.close('all')
+fig = plt.figure(figsize=(24,28));cnt = 0
+xx,yy,xerr,ylabel,kk = [],[],[],[],[]
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    kk.append(keys)
+    yy.append(cnt+0.1)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    cnt += 1
+xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
+sortIdx = np.argsort(xx)
+sortylabel = [ylabel[ii] for ii in sortIdx[::-1] ]
+for cnt,keys in enumerate(sortylabel):
+    ax = fig.add_subplot(6,7,cnt+1)
+    item,fpr,tpr,confM,sensitivity,specificity = all_predictions_ML[keys]
+    ax=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
+                   ax=ax,annot=True)
+    ax.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
+        xticklabels=['non spindle','spindle'],)
+    ax.set_yticklabels(['spindle','non spindle'],rotation=90)
+    ax.set_title(keys,fontsize=16,fontweight='bold')
+    if cnt % 7 ==0:
+        ax.set_ylabel('True label',fontweight='bold',fontsize=16)
+    if cnt > 34:
+        ax.set_xlabel('Predicted label',fontweight='bold',fontsize=16)
+fig.suptitle('Confusion matrix\nMachine learning model',y=1.015,fontweight='bold')
+fig.tight_layout()
+fig.savefig('%sconfusion matrix individual machinelearning.png'%folder, bbox_inches='tight')
+###################################################################################################
+# old new testing
+from random import shuffle
+from scipy.stats import percentileofscore
+xx,yy,xerr,ylabel,kk = [],[],[],[],[]
+old,new = [],[]
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    kk.append(keys)
+    yy.append(cnt+0.1)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    if int(keys.split('d')[0][3:]) < 11:
+        old.append(item)
+    else:
+        new.append(item)
+    cnt += 1
+old = np.concatenate(old)
+new = np.concatenate(new)
+mean_difference = old.mean() - new.mean()
+ps = []
+for tt in range(500):
+    diff = []
+    vector_d = np.concatenate([old,new])
+    for ii in range(500):
+        shuffle(vector_d)
+        shuffle_old = vector_d[:len(old)]
+        shuffle_new = vector_d[len(old):]
+        diff.append(shuffle_old.mean() - shuffle_new.mean())
+    ps.append(min(percentileofscore(diff,mean_difference)/100,(100-percentileofscore(diff,mean_difference))/100))
+print('p values: %.3f +/- %.3f'%(np.mean(ps),np.std(ps)))
+#######################################################################################
+from random import shuffle
+from scipy.stats import percentileofscore
+xx,yy,xerr,ylabel,kk = [],[],[],[],[]
+old,new = [],[]
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    kk.append(keys)
+    yy.append(cnt+0.1)
+    xx.append(np.mean(item))
+    xerr.append(np.std(item)/np.sqrt(len(item)))
+    ylabel.append(keys)
+    if int(keys.split('d')[0][3:]) < 11:
+        old.append(item)
+    else:
+        new.append(item)
+    cnt += 1
+old = np.concatenate(old)
+new = np.concatenate(new)
+mean_difference = old.mean() - new.mean()
+ps = []
+for tt in range(500):
+    diff = []
+    vector_d = np.concatenate([old,new])
+    for ii in range(500):
+        shuffle(vector_d)
+        shuffle_old = vector_d[:len(old)]
+        shuffle_new = vector_d[len(old):]
+        diff.append(shuffle_old.mean() - shuffle_new.mean())
+    ps.append(min(percentileofscore(diff,mean_difference)/100,(100-percentileofscore(diff,mean_difference))/100))
+print('p values: %.3f +/- %.3f'%(np.mean(ps),np.std(ps)))
+####################################################################################
+df_all = {'Subject':[],
+          'Day':[],
+          'Mean TN':[],
+          'Mean FP':[],
+          'Mean FN':[],
+          'Mean TP':[],
+          'Mean sensitivity':[],
+          'Mean specificity':[],
+          'Model':[],
+          'Mean AUC':[]}
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    sub = int(keys.split('day')[0][3:])
+    day = int(keys.split('day')[1])
+    mean_confM = np.mean(confM,0)
+    std_confM = np.std(confM,0)
+    TN,FP,FN,TP = mean_confM
+    TN_,FP_,FN_,TP_ = std_confM
+    mean_sensitivity = np.mean(sensitivity)
+    std_sensitivity = np.std(sensitivity)
+    mean_specificity = np.mean(specificity)
+    std_specificity = np.std(specificity)
+    mean_AUC = np.mean(item)
+    std_AUC = np.std(item)
+    df_all['Subject'].append(sub)
+    df_all['Day'].append(day)
+    df_all['Mean TN'].append(TN)
+    df_all['Mean FP'].append(FP)
+    df_all['Mean FN'].append(FN)
+    df_all['Mean TP'].append(TP)
+    df_all['Mean sensitivity'].append(mean_sensitivity)
+    df_all['Mean specificity'].append(mean_specificity)
+    df_all['Model'].append('Machine learning')
+    df_all['Mean AUC'].append(mean_AUC)
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    sub = int(keys.split('day')[0][3:])
+    day = int(keys.split('day')[1])
+    mean_confM = np.mean(confM,0)
+    std_confM = np.std(confM,0)
+    TN,FP,FN,TP = mean_confM
+    TN_,FP_,FN_,TP_ = std_confM
+    mean_sensitivity = np.mean(sensitivity)
+    std_sensitivity = np.std(sensitivity)
+    mean_specificity = np.mean(specificity)
+    std_specificity = np.std(specificity)
+    mean_AUC = np.mean(item)
+    std_AUC = np.std(item)
+    df_all['Subject'].append(sub)
+    df_all['Day'].append(day)
+    df_all['Mean TN'].append(TN)
+    df_all['Mean FP'].append(FP)
+    df_all['Mean FN'].append(FN)
+    df_all['Mean TP'].append(TP)
+    df_all['Mean sensitivity'].append(mean_sensitivity)
+    df_all['Mean specificity'].append(mean_specificity)
+    df_all['Model'].append('FBT')
+    df_all['Mean AUC'].append(mean_AUC)   
+df_all = pd.DataFrame(df_all)   
+df_all = df_all.sort_values(['Subject','Day'])
+df_all = df_all[['Subject','Day','Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
+                 'Mean sensitivity','Mean specificity','Model']]
+df_all.to_csv('%smore measures.csv'%folder,index=False)
 
+df_all_plot = df_all[['Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
+                 'Mean sensitivity','Mean specificity','Model']]
+df_all_plot.columns = ['AUC','True negative rate','False positive rate','False negative rate','True positive rate',
+                 'Sensitivity','Specificity','Model']
+df_all_plot['Model'] = df_all_plot['Model'].map({'Machine learning':'Machine learning','FBT':'Filter based\nand thresholding'})
+g = sns.PairGrid(data=df_all_plot,hue='Model',)
+g.map_lower(sns.kdeplot, edgecolor="w")
+g.map_upper(plt.scatter, edgecolor="w")
+g.map_diag(sns.kdeplot,lw=3)
+g.add_legend(fontsize=25)
+g.fig.savefig('%smany measures.png'%folder, bbox_inches='tight',)
 
 
 
