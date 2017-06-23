@@ -18,7 +18,7 @@ plt.rc('font', size=26)
 matplotlib.rc('axes', titlesize=30)
 plt.rc('axes', labelsize=30)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=30)    # fontsize of the tick labels
-plt.rc('ytick', labelsize=30)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=18)    # fontsize of the tick labels
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -71,56 +71,65 @@ auto_annotation = [f for f in file_in_fold if ('auto_annotation.csv' in f)]
 cnt_old = 0;cnt_new=0;all_sub={'new':[],'old':[]}
 manual_only={'new':[],'old':[]}
 for file in list_file_to_read:
-    sub = file.split('_')[0]
-    if int(sub[3:]) >= 11:
-        day = file.split('_')[2][:4]
-        day_for_show = day
-        old = False
+    if file == 'suj20_l2nap_day2.fif':
+        pass
     else:
-        day = file.split('_')[1]
-        day_for_show = day[0]+'ay'+day[1]
-        old = True
-
-    manual = [item for item in annotation_in_fold if (sub in item) and (day in item)]
-    if len(manual) != 0:
-        raw = mne.io.read_raw_fif(file,preload=True)
-        auto = pd.read_csv(sub+"_"+day_for_show+"auto_annotation.csv")
-        manual_spindle = pd.read_csv(manual[0])
-        manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
-        manual_spindle = manual_spindle[manual_spindle.Onset > front]
-        keyword = re.compile('spindle',re.IGNORECASE)
-        gold_standard = {'Onset':[],'Annotation':[]}
-        for ii,row in manual_spindle.iterrows():
-            if keyword.search(row[-1]):
-                gold_standard['Onset'].append(float(row.Onset))
-                gold_standard['Annotation'].append(row.Annotation)
-        gold_standard = pd.DataFrame(gold_standard) 
-        auto['Spindle']=['Automated']*len(auto)
-        gold_standard['Spindle']=['Manual']*len(gold_standard)
-        auto=auto[['Onset','Annotation','Spindle']]
-        auto['Subject']=['Subject '+sub[3:]+"_"+day_for_show]*len(auto)
-        gold_standard['Subject']=['Subject '+sub[3:]+"_"+day_for_show]*len(gold_standard)
-        if old:
-            all_sub['old'].append(auto)
-            all_sub['old'].append(gold_standard)
+        sub = file.split('_')[0]
+        if int(sub[3:]) >= 11:
+            day = file.split('_')[2][:4]
+            day_for_show = day
+            old = False
         else:
-            all_sub['new'].append(auto)
-            all_sub['new'].append(gold_standard)
-        
+            day = file.split('_')[1]
+            day_for_show = day[0]+'ay'+day[1]
+            old = True
+    
+        manual = [item for item in annotation_in_fold if (sub in item) and (day in item)]
+        if len(manual) != 0:
+            raw = mne.io.read_raw_fif(file,preload=True)
+            auto = pd.read_csv(sub+"_"+day_for_show+"auto_annotation.csv")
+            manual_spindle = pd.read_csv(manual[0])
+            manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
+            manual_spindle = manual_spindle[manual_spindle.Onset > front]
+            keyword = re.compile('spindle',re.IGNORECASE)
+            gold_standard = {'Onset':[],'Annotation':[]}
+            for ii,row in manual_spindle.iterrows():
+                if keyword.search(row[-1]):
+                    gold_standard['Onset'].append(float(row.Onset))
+                    gold_standard['Annotation'].append(row.Annotation)
+            gold_standard = pd.DataFrame(gold_standard) 
+            auto['Spindle']=['Automated']*len(auto)
+            gold_standard['Spindle']=['Manual']*len(gold_standard)
+            auto=auto[['Onset','Annotation','Spindle']]
+            auto['Subject']=['Subject '+sub[3:]+"_"+day_for_show]*len(auto)
+            gold_standard['Subject']=['Subject '+sub[3:]+"_"+day_for_show]*len(gold_standard)
+            if old:
+                all_sub['old'].append(auto)
+                all_sub['old'].append(gold_standard)
+            else:
+                all_sub['new'].append(auto)
+                all_sub['new'].append(gold_standard)
             
-        gold_standard['Sub']=['Subject '+sub[3:]]*len(gold_standard)
-        gold_standard['day']=[day_for_show]*len(gold_standard)
-        if old:
-            manual_only['old'].append(gold_standard)
-        else:
-            manual_only['new'].append(gold_standard)
+                
+            gold_standard['Sub']=['Subject '+sub[3:]]*len(gold_standard)
+            gold_standard['day']=[day_for_show]*len(gold_standard)
+            if old:
+                manual_only['old'].append(gold_standard)
+            else:
+                manual_only['new'].append(gold_standard)
+
+import pickle
+#pickle.dump(manual_only,open('manual only annotations.p','wb'))
+manual_only = pickle.load(open('manual only annotations.p','rb'))
 
 sns.set_style("white")
 order=['Subject 5_day2',
        'Subject 6_day1', 'Subject 6_day2', 'Subject 8_day1',
        'Subject 8_day2', 'Subject 9_day1', 'Subject 9_day2',
        'Subject 10_day1', 'Subject 10_day2']            
-fig, ax = plt.subplots(figsize=(20,25),nrows=2)        
+#fig, ax = plt.subplots(figsize=(20,30),nrows=2,gridspec_kw = {'height_ratios':[9, 33]})  
+fig = plt.figure(figsize=(20,25))
+ax = [fig.add_subplot(221), fig.add_subplot(223)]      
 new = pd.concat(all_sub['new'])
 old = pd.concat(all_sub['old'])
 ax[0]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=old,cut=0,split=True,
@@ -129,21 +138,34 @@ ax[0]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=old,cut=0,split=Tr
 ax[0].set(xlim=(0,4000),xlabel='',
             ylabel='')  
 ax[0].set_title('Long recordings',fontweight='bold')
-lgd1=ax[0].legend(prop={'size':26})
-ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new,cut=0,split=True,
+lgd1=ax[0].legend(loc='best',prop={'size':18})
+# need to select data first, and before that, reset index
+new = new.reset_index()
+ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new[:1830],cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
-                palette={"Manual": "#2976bb", "Automated": "#20c073"})
-ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
+                palette={"Manual": "#20c073", "Automated": "#2976bb"})
+ax[1].set(xlim=(0,2000),
             ylabel='')
+ax[1].set_xlabel('Time (Sec)',fontweight='bold')
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(loc='best',prop={'size':20})
+lgd2=ax[1].legend(loc='best',prop={'size':18})
+ax = fig.add_subplot(122)
+ax=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new[1830:],cut=0,split=True,
+                  gridsize=20,inner="quart",ax=ax,scale='area',scale_hue=True,
+                palette={"Manual": "#20c073", "Automated": "#2976bb"})
+ax.set(xlim=(0,2000),
+            ylabel='')
+ax.set_xlabel('Time (Sec)',fontweight='bold')
+ax.set_title('Short recordings',fontweight='bold')
+lgd2=ax.legend(loc='best',prop={'size':18})
 fig.tight_layout()       
-fig.savefig('manu vs auto(full).png')       
+fig.savefig('manu vs auto(full).png',dpi=300)   
+    
         
         
 #manual_only = pd.concat(manual_only)
 order=['Subject 5', 'Subject 6', 'Subject 8', 'Subject 9','Subject 10']
-f, ax = plt.subplots(figsize=(20,25),nrows=2)        
+f, ax = plt.subplots(figsize=(20,25),nrows=2,gridspec_kw = {'height_ratios':[5, 17]})        
 new = pd.concat(manual_only['new'])
 old = pd.concat(manual_only['old'])
 ax[0]=sns.violinplot(y='Sub',x='Onset',hue='day',data=old,cut=0,split=True,
@@ -156,13 +178,14 @@ lgd1=ax[0].legend(prop={'size':28})
 ax[1]=sns.violinplot(y='Sub',x='Onset',hue='day',data=new,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
                     palette={"day1": "#2976bb", "day2": "#20c073"})  
-ax[1].set(xlim=(0,2000),xlabel='Time (Sec)',
+ax[1].set(xlim=(0,2000),
             ylabel='')
+ax[1].set_xlabel('Time (Sec)',fontweight='bold')
 handles, labels = ax[1].get_legend_handles_labels()
 ax[1].set_title('Short recordings',fontweight='bold')
 lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':28})
 fig.tight_layout()
-f.savefig('manu only(full).png',bbox_inches = 'tight')      
+f.savefig('manu only(full).png',bbox_inches = 'tight',dpi=800)      
         
 subjects=[11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,32] # missing 12, 26,27, 3
 slow = 10,12   

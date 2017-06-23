@@ -16,7 +16,7 @@ import eegPinelineDesign
 from sklearn import metrics
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.rcParams.update({'font.size':22})
+matplotlib.rcParams.update({'font.size':12})
 matplotlib.rcParams['legend.numpoints'] = 1
 plt.rc('font',weight='bold',size=16)
 
@@ -345,12 +345,27 @@ fig.savefig('%sindividual performance signal processing (itself).png'%folder)
 #exported_pipeline = joblib.load('%smy_model.pkl'%folder)
 #cv = KFold(n_splits=10,random_state=18374,shuffle=True)
 # put them together
+result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
+df = {'ML':[],'threshold':[]}
+all_detections,all_predictions_ML,_ = result 
 import seaborn as sns
+import re
+from scipy import interp
 sns.set_style('white')
+df = pd.read_csv('D:\\NING - spindle\\training set\\step_size_500_11_16getting_higher_threshold\\more measures.csv')
+df_FBT = df[df['Model'] == 'FBT'].reset_index()
+df_FBT['dist'] = abs(df_FBT['Mean AUC'] - df_FBT['Mean AUC'].median())
+flashing_key_FBT = [df_FBT['Subject'][np.argmin(df_FBT['dist'])],df_FBT['Day'][np.argmin(df_FBT['dist'])]]
+df_ML = df[df['Model'] == 'Machine learning'].reset_index()
+df_ML['dist'] = abs(df_ML['Mean AUC'] - df_ML['Mean AUC'].median())
+flashing_key_ML = [df_ML['Subject'][np.argmin(df_ML['dist'])],df_ML['Day'][np.argmin(df_ML['dist'])]]
+###########################################################
 fig= plt.figure(figsize=(24,16));cnt = 0;uv=4.7
 ax = fig.add_subplot(131)
 xx,yy,xerr,ylabel,kk = [],[],[],[],[]
 for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    keys = re.findall('\d+',keys)
+    keys = keys[0] +'            ' + keys[1] + ' '
     kk.append(keys)
     yy.append(cnt+0.1)
     xx.append(np.mean(item))
@@ -361,21 +376,23 @@ xx,yy,xerr = np.array(xx),np.array(yy),np.array(xerr)
 sortIdx = np.argsort(xx)
 ax.errorbar(xx[sortIdx],yy,xerr=xerr[sortIdx],linestyle='',color='blue',
             label='FBT, individual')
+ax.errorbar(0,yy[-1]+1,0)
 ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+uv),
            )
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='blue',label='FBT average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
+            alpha=0.3,color='blue',label='FBT average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()))
 sortylabel = [ylabel[ii] for ii in sortIdx ]
-_=ax.set(ylim=(-0.5,len(ylabel)+4),)
+sortylabel.append('Subject    Day')
+_=ax.set(ylim=(-0.5,len(ylabel)+uv),)
 plt.xticks(fontsize=16,fontweight='bold')
-ax.set_ylabel('Subjects',fontsize=20,fontweight='bold')
-plt.yticks(np.arange(len(ylabel)),sortylabel,fontsize=16)
-ax.set_title('Model comparison:\ncv=5',fontsize=20,fontweight='bold')
+#ax.set_ylabel('Subjects',fontsize=20,fontweight='bold')
+plt.yticks(np.arange(len(ylabel)+1),sortylabel,fontsize=16)
+ax.set_title('Model comparison:\ncross validation folds: 5',fontsize=20,fontweight='bold')
 ax.set_xlabel('AUC scores',fontsize=20,fontweight='bold')
-
 xx,yy,xerr,ylabel,k = [],[],[],[],[];cnt = 0
 for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    
     k.append(keys)
     yy.append(cnt)
     xx.append(np.mean(item))
@@ -391,31 +408,87 @@ ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
            color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='red',label='Machine learning average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
-lgd =ax.legend(loc='upper left',prop={'size':12},frameon=False)
+            alpha=0.3,color='red',label='Machine learning average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()),)
+lgd =ax.legend(loc='upper left',prop={'size':13},frameon=False)
+ax.set(xlim=(0.35,1.))
 frame = lgd.get_frame()
 frame.set_facecolor('None')
-
+################## second column - machine learning ##########################################
 ax_ML = fig.add_subplot(232)
-AUC,fpr,tpr,confM,sensitivity,specificity = all_predictions_ML['suj22day1']
-select = np.random.choice(np.arange(5),size=1)[0]
-fpr = fpr[select];tpr = tpr[select]
-ax_ML.plot(fpr,tpr,label='AUC score: %.3f $\pm$ %.4f'%(np.mean(AUC),np.std(AUC)),color='red')
-ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+confM_ML = []
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    keys = re.findall('\d+',keys)
+    keys = [int(a) for a in keys]
+    
+    if len(confM) > 5:
+        confM = confM[:5]
+    #print(keys,len(confM))
+    confM_ML.append(confM)
+    if keys == flashing_key_ML:
+        tprs = []
+        base_fpr = np.linspace(0, 1, 101)
+        for select in range(5):
+            fpr_ = fpr[select];tpr_ = tpr[select]
+            tpr_interp = interp(base_fpr, fpr_, tpr_)
+            tpr_interp[0] = 0
+            tprs.append(tpr_interp)
+        tprs = np.array(tprs)
+        mean_tprs = tprs.mean(axis=0)
+        std = tprs.std(axis=0)
+        tprs_upper = np.minimum(mean_tprs + std, 1)
+        tprs_lower = mean_tprs - std
+        
+        ax_ML.plot(base_fpr, mean_tprs,
+                   label='Most median sample\nsubject %d, day %d\nAUC: %.2f $\pm$ %.2f'%(keys[0],keys[1],np.mean(item),np.std(item)),
+                   color='black',alpha=1.)
+        ax_ML.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3)
+        ax_ML.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    else:    
+        for auc_n in range(5):
+            fpr_plot = fpr[auc_n];tpr_plot = tpr[auc_n]
+            ax_ML.plot(fpr_plot,tpr_plot,color='red',alpha=0.1)
 l=ax_ML.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
-ax_ML.set_title('subject %d day %d, ROC AUC\nMachine learning model'%(22,1),fontweight='bold',fontsize=20)
+ax_ML.set_title('Between subject ROC AUC\nMachine learning model',fontweight='bold',fontsize=20)
 ax_ML.set(ylim=(0,1.02),xlim=(0,1.02))
 ax_ML.set_ylabel('True positive rate',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
-
+########################### second colum below - FBT ##########################
 ax_signal = fig.add_subplot(235)
-temp_auc,fp,tp,confM,sensitivity,specificity = all_detections['suj22day1']
-fp,tp = np.array(fp),np.array(tp)
-ax_signal.plot(fp,tp,label='AUC score: %.3f $\pm$ %.4f'%(np.mean(temp_auc),np.std(temp_auc)),color='blue')
-ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+confM_FBT = []
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    keys = re.findall('\d+',keys)
+    keys = [int(a) for a in keys]
+    
+    if len(confM) > 5:
+        confM = confM[:5]
+    #print(keys,len(confM))
+    confM_ML.append(confM)
+    if keys == flashing_key_FBT:
+        tprs = []
+        base_fpr = np.linspace(0, 1, 101)
+        for select in range(5):
+            fpr_ = fpr[select];tpr_ = tpr[select]
+            tpr_interp = interp(base_fpr, fpr_, tpr_)
+            tpr_interp[0] = 0
+            tprs.append(tpr_interp)
+        tprs = np.array(tprs)
+        mean_tprs = tprs.mean(axis=0)
+        std = tprs.std(axis=0)
+        tprs_upper = np.minimum(mean_tprs + std, 1)
+        tprs_lower = mean_tprs - std
+        
+        ax_signal.plot(base_fpr, mean_tprs,
+                   label='Most median sample\nsubject %d, day %d\nAUC: %.2f $\pm$ %.2f'%(keys[0],keys[1],np.mean(item),np.std(item)),
+                   color='black',alpha=1.)
+        ax_signal.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3)
+        ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    else:    
+        for auc_n in range(5):
+            fpr_plot = fpr;tpr_plot = tpr
+            ax_signal.plot(fpr_plot,tpr_plot,color='blue',alpha=0.1)
 ax_signal.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
 frame.set_facecolor('None')
@@ -425,26 +498,33 @@ ax_signal.set_ylabel('True positive rate',fontsize=20,fontweight='bold')
 ax_signal.set_xlabel('False positive rate',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
-
+########################### 3rd col #####################################################
+confM_FBT_mean = np.array(confM_FBT).mean(1).mean(0)
+confM_ML_mean = np.array(confM_ML).mean(1).mean(0)
+confM_FBT_std = np.array(confM_FBT).mean(1).std(0)
+confM_ML_std = np.array(confM_ML).mean(1).std(0)
 ax_ML_CM = fig.add_subplot(233)
-AUC,fpr,tpr,confM,sensitivity,specificity = all_predictions_ML['suj22day1']
-select = np.random.choice(np.arange(5),size=1)[0]
-fpr = fpr[select];tpr = tpr[select]
-ax_ML_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
-               ax=ax_ML_CM,annot=True,annot_kws={'fontsize':20})
+ax_ML_CM=sns.heatmap(confM_ML_mean.reshape(2,2),cbar=False,cmap=plt.cm.Blues,
+                     vmin=0,vmax=1.,
+                     ax=ax_ML_CM,annot=False)
+#coors = np.array([[-0.15,0],[1-0.15,0],[-0.15,1],[1-0.15,1]])+ 0.5
+coors = np.array([[0,1],[1,1],[0,0],[1,0],])+ 0.5
+for ii, (m,s,coor) in enumerate(zip(confM_ML_mean,confM_ML_std,coors)):
+    ax_ML_CM.annotate('%.2f $\pm$ %.2f'%(m,s),xy = coor,size=25,weight='bold',ha='center')
 ax_ML_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
         xticklabels=['non spindle','spindle'],)
 ax_ML_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
-ax_ML_CM.set_title('subject %d day %d, confusion matrix\nMachine learning model'%(22,1),fontweight='bold',fontsize=20)
+ax_ML_CM.set_title('Between subject confusion matrix\nMachine learning model',fontweight='bold',fontsize=20)
 ax_ML_CM.set_ylabel('True label',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
 ax_signal_CM = fig.add_subplot(236)
-temp_auc,fp,tp,confM,sensitivity,specificity = all_detections['suj22day1']
-fp,tp = np.array(fp),np.array(tp)
-ax_signal_CM=sns.heatmap(np.mean(confM,0).reshape(2,2),cbar=False,cmap=plt.cm.Blues,vmin=0,vmax=1.,
-               ax=ax_signal_CM,annot=True,annot_kws={'fontsize':20})
+ax_signal_CM=sns.heatmap(confM_FBT_mean.reshape(2,2),cbar=False,cmap=plt.cm.Blues,
+                     vmin=0,vmax=1.,
+                     ax=ax_signal_CM,annot=False)
+for ii, (m,s,coor) in enumerate(zip(confM_FBT_mean,confM_FBT_std,coors)):
+    ax_signal_CM.annotate('%.2f $\pm$ %.2f'%(m,s),xy = coor,size=25,weight='bold',ha='center')
 ax_signal_CM.set(xticks=(0.5,1.5),yticks=(0.75,1.75),
         xticklabels=['non spindle','spindle'],)
 ax_signal_CM.set_yticklabels(['spindle','non spindle'],rotation=90)
@@ -454,12 +534,13 @@ ax_signal_CM.set_xlabel('Predicted label',fontsize=20,fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 
-fig.get_axes()[0].annotate('(a)',(0.35,45.01),fontsize=26)
-fig.get_axes()[1].annotate('(b)',(0.05,1.02),fontsize=26)
-fig.get_axes()[3].annotate('(c)',(0.05,2.0),fontsize=26)
+#fig.get_axes()[0].annotate('(a)',(0.35,45.01),fontsize=26)
+#fig.get_axes()[1].annotate('(b)',(0.05,1.02),fontsize=26)
+#fig.get_axes()[3].annotate('(c)',(0.05,2.0),fontsize=26)
 #fig.tight_layout()
 fig.savefig('%sindividual performance (2 models) (edited).png'%folder, bbox_inches='tight')
-
+fig.savefig('%sindividual performance (2 models) (high).png'%folder, bbox_inches='tight',
+            dpi=300)
 
 #################################################################################
 import seaborn as sns
@@ -496,6 +577,8 @@ for cnt,keys in enumerate(sortylabel):
 fig.suptitle('Confusion matrix\nFilter based and thresholding model',y=1.015,fontweight='bold')
 fig.tight_layout()
 fig.savefig('%sconfusion matrix individual thresholding.png'%folder, bbox_inches='tight')
+fig.savefig('%sconfusion matrix individual thresholding (high).png'%folder, bbox_inches='tight',
+            dpi=300)
 
 plt.close('all')
 fig = plt.figure(figsize=(24,28));cnt = 0
@@ -526,6 +609,8 @@ for cnt,keys in enumerate(sortylabel):
 fig.suptitle('Confusion matrix\nMachine learning model',y=1.015,fontweight='bold')
 fig.tight_layout()
 fig.savefig('%sconfusion matrix individual machinelearning.png'%folder, bbox_inches='tight')
+fig.savefig('%sconfusion matrix individual machinelearning.png'%folder, bbox_inches='tight',
+            dpi=300)
 ###################################################################################################
 # old new testing
 from random import shuffle
@@ -656,7 +741,7 @@ df_all_plot.columns = ['AUC','True negative rate','False positive rate','False n
                  'Sensitivity','Specificity','Model']
 df_all_plot['Model'] = df_all_plot['Model'].map({'Machine learning':'Machine learning','FBT':'Filter based\nand thresholding'})
 g = sns.PairGrid(data=df_all_plot,hue='Model',)
-g.map_lower(sns.kdeplot, edgecolor="w")
+g.map_lower(sns.regplot,)
 g.map_upper(plt.scatter, edgecolor="w")
 g.map_diag(sns.kdeplot,lw=3)
 g.add_legend(fontsize=25)

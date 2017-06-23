@@ -1897,7 +1897,7 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
         print('too few spindle for fiting')
         fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
         #cv = KFold(n_splits=10,random_state=123345,shuffle=True)
-        for ii in range(10):
+        for ii in range(5):
             test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
             while sum(manual_labels[test]) < 1:
                 test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
@@ -2071,12 +2071,12 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
                                                                                                
     raw.close()  
     temp_auc = [];#fp=[];tp=[]
-    confM = [];sensitivity=[];specificity=[]
+    confM = [];sensitivity=[];specificity=[];fpr=[];tpr=[]
     if cv == None:
         cv = KFold(n_splits=10,random_state=12345,shuffle=True)
     for train, test in cv.split(manual_labels):
-        detected,truth = auto_label[train],manual_labels[train]
-        temp_auc.append(roc_auc_score(truth,detected))
+        detected,truth,detected_proba = auto_label[train],manual_labels[train],auto_proba[train]
+        temp_auc.append(roc_auc_score(truth,detected_proba))
         confM_temp = metrics.confusion_matrix(truth,detected)
         TN,FP,FN,TP = confM_temp.flatten()
         sensitivity_ = TP / (TP+FN)
@@ -2085,7 +2085,9 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
         confM.append(confM_temp.flatten())
         sensitivity.append(sensitivity_)
         specificity.append(specificity_)
-    fpr,tpr,t = roc_curve(manual_labels,auto_proba)
+        fp,tp,t = roc_curve(truth,detected_proba)
+        fpr.append(fp)
+        tpr.append(tp)
     
     print(metrics.classification_report(manual_labels,auto_label))
     return temp_auc,fpr,tpr, confM, sensitivity, specificity
