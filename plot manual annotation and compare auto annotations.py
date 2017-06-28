@@ -120,7 +120,9 @@ for file in list_file_to_read:
 
 import pickle
 #pickle.dump(manual_only,open('manual only annotations.p','wb'))
+#pickle.dump(all_sub,open('all sub.p','wb'))
 manual_only = pickle.load(open('manual only annotations.p','rb'))
+all_sub = pickle.load(open('all sub.p','rb'))
 
 sns.set_style("white")
 order=['Subject 5_day2',
@@ -128,20 +130,34 @@ order=['Subject 5_day2',
        'Subject 8_day2', 'Subject 9_day1', 'Subject 9_day2',
        'Subject 10_day1', 'Subject 10_day2']            
 #fig, ax = plt.subplots(figsize=(20,30),nrows=2,gridspec_kw = {'height_ratios':[9, 33]})  
+import re
+def reset_yticklabels(x):
+    try:
+        sub, day = re.findall('\d+',x)
+        return sub + '        ' + day
+    except:
+        sub = re.findall('\d+',x)
+        return int(sub[0])
 fig = plt.figure(figsize=(20,25))
 ax = [fig.add_subplot(221), fig.add_subplot(223)]      
 new = pd.concat(all_sub['new'])
 old = pd.concat(all_sub['old'])
-ax[0]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=old,cut=0,split=True,
+new['Subject_'] = new['Subject'].apply(reset_yticklabels)
+old['Subject_'] = old['Subject'].apply(reset_yticklabels)
+yticklabels = []
+for y in order:
+    temp = reset_yticklabels(y)
+    yticklabels.append(temp)
+ax[0]=sns.violinplot(y='Subject_',x='Onset',hue='Spindle',data=old,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[0],scale='area',scale_hue=True,
-                    order=order,palette={"Automated": "#2976bb", "Manual": "#20c073"})
+                    order=yticklabels,palette={"Automated": "#2976bb", "Manual": "#20c073"})
 ax[0].set(xlim=(0,4000),xlabel='',
-            ylabel='')  
+            ylabel='')#, yticklabels=yticklabels)  
 ax[0].set_title('Long recordings',fontweight='bold')
 lgd1=ax[0].legend(loc='best',prop={'size':18})
 # need to select data first, and before that, reset index
 new = new.reset_index()
-ax[1]=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new[:1830],cut=0,split=True,
+ax[1]=sns.violinplot(y='Subject_',x='Onset',hue='Spindle',data=new[:1830],cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
                 palette={"Manual": "#20c073", "Automated": "#2976bb"})
 ax[1].set(xlim=(0,2000),
@@ -150,7 +166,7 @@ ax[1].set_xlabel('Time (Sec)',fontweight='bold')
 ax[1].set_title('Short recordings',fontweight='bold')
 lgd2=ax[1].legend(loc='best',prop={'size':18})
 ax = fig.add_subplot(122)
-ax=sns.violinplot(y='Subject',x='Onset',hue='Spindle',data=new[1830:],cut=0,split=True,
+ax=sns.violinplot(y='Subject_',x='Onset',hue='Spindle',data=new[1830:],cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax,scale='area',scale_hue=True,
                 palette={"Manual": "#20c073", "Automated": "#2976bb"})
 ax.set(xlim=(0,2000),
@@ -165,27 +181,34 @@ fig.savefig('manu vs auto(full).png',dpi=300)
         
 #manual_only = pd.concat(manual_only)
 order=['Subject 5', 'Subject 6', 'Subject 8', 'Subject 9','Subject 10']
-f, ax = plt.subplots(figsize=(20,25),nrows=2,gridspec_kw = {'height_ratios':[5, 17]})        
+yticklabels = []
+for y in order:
+    temp = reset_yticklabels(y)
+    yticklabels.append(temp)
+f, ax = plt.subplots(figsize=(15,20),nrows=2,gridspec_kw = {'height_ratios':[5, 17]})        
 new = pd.concat(manual_only['new'])
 old = pd.concat(manual_only['old'])
+new['Sub_']=new['Sub'].apply(reset_yticklabels)
+old['Sub_']=old['Sub'].apply(reset_yticklabels)
 ax[0]=sns.violinplot(y='Sub',x='Onset',hue='day',data=old,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[0],scale='area',scale_hue=True,
-                    order=order,palette={"day1": "#2976bb", "day2": "#20c073"})
-ax[0].set(xlim=(0,4000),xlabel='',
-            ylabel='')
+                    palette={"day1": "#2976bb", "day2": "#20c073"},order=order,)
+ax[0].set(xlim=(0,4000),xlabel='',ylabel='Subject',yticklabels=yticklabels)
 ax[0].set_title('Long recordings',fontweight='bold')  
-lgd1=ax[0].legend(prop={'size':28})  
+lgd1=ax[0].legend(loc='upper right',prop={'size':28})  
+yticklabels = []
+for y in pd.unique(new['Sub']):
+    yticklabels.append(reset_yticklabels(y))
 ax[1]=sns.violinplot(y='Sub',x='Onset',hue='day',data=new,cut=0,split=True,
                   gridsize=20,inner="quart",ax=ax[1],scale='area',scale_hue=True,
                     palette={"day1": "#2976bb", "day2": "#20c073"})  
-ax[1].set(xlim=(0,2000),
-            ylabel='')
+ax[1].set(xlim=(0,2000),ylabel='Subject',yticklabels=yticklabels)
 ax[1].set_xlabel('Time (Sec)',fontweight='bold')
 handles, labels = ax[1].get_legend_handles_labels()
 ax[1].set_title('Short recordings',fontweight='bold')
-lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='best',prop={'size':28})
+lgd2=ax[1].legend(handles[::-1], labels[::-1],loc='upper left',prop={'size':28})
 fig.tight_layout()
-f.savefig('manu only(full).png',bbox_inches = 'tight',dpi=800)      
+f.savefig('manu only(full).png',bbox_inches = 'tight',dpi=300)      
         
 subjects=[11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,32] # missing 12, 26,27, 3
 slow = 10,12   

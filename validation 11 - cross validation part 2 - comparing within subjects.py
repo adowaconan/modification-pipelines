@@ -129,8 +129,8 @@ fitting_pipeline = make_pipeline(
         )
 cv = KFold(n_splits=5,random_state=18375,shuffle=True) #maybe we should reduce the number of splits to 5
 
-all_predictions_ML,all_detections,all_predictions_randomforest={},{},{}
-running_time_ML,running_time_signal_process,running_time_randomforest={},{},{}
+all_predictions_ML,all_detections,all_detections_alter={},{},{}
+running_time_ML,running_time_signal_process,running_time_detections_alter={},{},{}
 for file in list_file_to_read:
     if file == 'suj20_l2nap_day2.fif':
         pass
@@ -170,16 +170,19 @@ for file in list_file_to_read:
             running_time_ML[for_name]=t1-t0
             print('export pipeline cv time: %.2f s, auc: %.2f'%(t1-t0,np.mean(all_predictions_ML[for_name][0])))
     
-            # machine learning model randomforest
-            """
-            print('ranomd forest model for %s' % (sub+day))
+            # signal processing with adapted threshold for confusion matrix
+            
+            print('signal processing with altered threshold for %s' % (sub+day))
             t0=time.time()
-            all_predictions_randomforest[for_name]=eegPinelineDesign.fit_data(raw,randomforest,
-                                              annotation_file,cv)
+            all_detections_alter[for_name]=eegPinelineDesign.detection_pipeline_crossvalidation(raw,channelList,
+                                                                                        annotation,windowSize,
+                                                                                        lower_threshold,higher_threshold,syn_channel,
+                                                                                        l,h,annotation_file,cv=cv,
+                                                                                        auc_threshold='adapt')
             t1=time.time()
-            running_time_randomforest[sub+day]=t1-t0
-            print('RF cv time: %.2f s'%(t1-t0))
-            """
+            running_time_detections_alter[sub+day]=t1-t0
+            print('altered my model cv time: %.2f s, auc: %.2f'%(t1-t0,np.mean(all_detections_alter[for_name][0])))
+            
             
             # signal processing model
             print('signal processing model for %s' % (sub+day))
@@ -196,8 +199,8 @@ for file in list_file_to_read:
         else:
             print(sub+day+'no annotation')
         
-pickle.dump([all_detections,all_predictions_ML,all_predictions_randomforest],open("%smodel comparions.p"%folder,"wb"))
-pickle.dump([running_time_signal_process,running_time_ML,running_time_randomforest],open("%smodel running time.p"%folder,"wb"))
+pickle.dump([all_detections,all_predictions_ML,all_detections_alter],open("%smodel comparions.p"%folder,"wb"))
+pickle.dump([running_time_signal_process,running_time_ML,running_time_detections_alter],open("%smodel running time.p"%folder,"wb"))
 
 """
 result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
@@ -347,11 +350,123 @@ fig.savefig('%sindividual performance signal processing (itself).png'%folder)
 # put them together
 result = pickle.load(open("%smodel comparions.p"%folder,"rb"))
 df = {'ML':[],'threshold':[]}
-all_detections,all_predictions_ML,_ = result 
+all_predictions_ML,all_detections,all_detections_alter = result 
 import seaborn as sns
 import re
 from scipy import interp
 sns.set_style('white')
+####################################################################################
+df_all = {'Subject':[],
+          'Day':[],
+          'Mean TN':[],
+          'Mean FP':[],
+          'Mean FN':[],
+          'Mean TP':[],
+          'Mean sensitivity':[],
+          'Mean specificity':[],
+          'Model':[],
+          'Mean AUC':[]}
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
+    sub = int(keys.split('day')[0][3:])
+    day = int(keys.split('day')[1])
+    mean_confM = np.mean(confM,0)
+    std_confM = np.std(confM,0)
+    TN,FP,FN,TP = mean_confM
+    TN_,FP_,FN_,TP_ = std_confM
+    mean_sensitivity = np.mean(sensitivity)
+    std_sensitivity = np.std(sensitivity)
+    mean_specificity = np.mean(specificity)
+    std_specificity = np.std(specificity)
+    mean_AUC = np.mean(item)
+    std_AUC = np.std(item)
+    df_all['Subject'].append(sub)
+    df_all['Day'].append(day)
+    df_all['Mean TN'].append(TN)
+    df_all['Mean FP'].append(FP)
+    df_all['Mean FN'].append(FN)
+    df_all['Mean TP'].append(TP)
+    df_all['Mean sensitivity'].append(mean_sensitivity)
+    df_all['Mean specificity'].append(mean_specificity)
+    df_all['Model'].append('Machine learning')
+    df_all['Mean AUC'].append(mean_AUC)
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
+    sub = int(keys.split('day')[0][3:])
+    day = int(keys.split('day')[1])
+    mean_confM = np.mean(confM,0)
+    std_confM = np.std(confM,0)
+    TN,FP,FN,TP = mean_confM
+    TN_,FP_,FN_,TP_ = std_confM
+    mean_sensitivity = np.mean(sensitivity)
+    std_sensitivity = np.std(sensitivity)
+    mean_specificity = np.mean(specificity)
+    std_specificity = np.std(specificity)
+    mean_AUC = np.mean(item)
+    std_AUC = np.std(item)
+    df_all['Subject'].append(sub)
+    df_all['Day'].append(day)
+    df_all['Mean TN'].append(TN)
+    df_all['Mean FP'].append(FP)
+    df_all['Mean FN'].append(FN)
+    df_all['Mean TP'].append(TP)
+    df_all['Mean sensitivity'].append(mean_sensitivity)
+    df_all['Mean specificity'].append(mean_specificity)
+    df_all['Model'].append('FBT')
+    df_all['Mean AUC'].append(mean_AUC) 
+for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections_alter.items():
+    sub = int(keys.split('day')[0][3:])
+    day = int(keys.split('day')[1])
+    mean_confM = np.mean(confM,0)
+    std_confM = np.std(confM,0)
+    TN,FP,FN,TP = mean_confM
+    TN_,FP_,FN_,TP_ = std_confM
+    mean_sensitivity = np.mean(sensitivity)
+    std_sensitivity = np.std(sensitivity)
+    mean_specificity = np.mean(specificity)
+    std_specificity = np.std(specificity)
+    mean_AUC = np.mean(item)
+    std_AUC = np.std(item)
+    df_all['Subject'].append(sub)
+    df_all['Day'].append(day)
+    df_all['Mean TN'].append(TN)
+    df_all['Mean FP'].append(FP)
+    df_all['Mean FN'].append(FN)
+    df_all['Mean TP'].append(TP)
+    df_all['Mean sensitivity'].append(mean_sensitivity)
+    df_all['Mean specificity'].append(mean_specificity)
+    df_all['Model'].append('FBT_alter')
+    df_all['Mean AUC'].append(mean_AUC)
+df_all = pd.DataFrame(df_all)   
+df_all = df_all.sort_values(['Subject','Day'])
+df_all = df_all[['Subject','Day','Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
+                 'Mean sensitivity','Mean specificity','Model']]
+df_all.to_csv('%smore measures.csv'%folder,index=False)
+
+df_all_plot = df_all[['Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
+                 'Mean sensitivity','Mean specificity','Model']]
+df_all_plot.columns = ['AUC','True negative rate','False positive rate','False negative rate','True positive rate',
+                 'Sensitivity','Specificity','Model']
+df_all_plot['Model'] = df_all_plot['Model'].map({'Machine learning':'Machine learning',
+           'FBT':'Filter based\nand thresholding',
+           'FBT_alter':'Filter based\nand thresholding\nchanged thresholds'})
+
+g = sns.PairGrid(data=df_all_plot,hue='Model',)
+g.map_lower(sns.regplot,)
+g.map_upper(plt.scatter, edgecolor="w")
+g.map_diag(sns.kdeplot,lw=3)
+g.add_legend(title='',fontsize=20)
+replacements = df_all_plot.columns
+for i in range(7):
+    for j in range(7):
+        xlabel = g.axes[i][j].get_xlabel()
+        ylabel = g.axes[i][j].get_ylabel()
+        if xlabel in replacements:
+            g.axes[i][j].set_xlabel(xlabel,fontsize=15,fontweight='bold')
+        if ylabel in replacements:
+            g.axes[i][j].set_ylabel(ylabel,fontsize=15,fontweight='bold')
+
+
+g.fig.savefig('%smany measures.png'%folder, bbox_inches='tight',dpi=400)
+############################################################################################################################
 df = pd.read_csv('D:\\NING - spindle\\training set\\step_size_500_11_16getting_higher_threshold\\more measures.csv')
 df_FBT = df[df['Model'] == 'FBT'].reset_index()
 df_FBT['dist'] = abs(df_FBT['Mean AUC'] - df_FBT['Mean AUC'].median())
@@ -465,7 +580,7 @@ for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items()
     if len(confM) > 5:
         confM = confM[:5]
     #print(keys,len(confM))
-    confM_ML.append(confM)
+    confM_FBT.append(confM)
     if keys == flashing_key_FBT:
         tprs = []
         base_fpr = np.linspace(0, 1, 101)
@@ -487,7 +602,7 @@ for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items()
         ax_signal.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     else:    
         for auc_n in range(5):
-            fpr_plot = fpr;tpr_plot = tpr
+            fpr_plot = fpr[auc_n];tpr_plot = tpr[auc_n]
             ax_signal.plot(fpr_plot,tpr_plot,color='blue',alpha=0.1)
 ax_signal.legend(loc='lower right',frameon=False,prop={'size':16})
 frame = l.get_frame()
@@ -672,80 +787,7 @@ for tt in range(500):
         diff.append(shuffle_old.mean() - shuffle_new.mean())
     ps.append(min(percentileofscore(diff,mean_difference)/100,(100-percentileofscore(diff,mean_difference))/100))
 print('p values: %.3f +/- %.3f'%(np.mean(ps),np.std(ps)))
-####################################################################################
-df_all = {'Subject':[],
-          'Day':[],
-          'Mean TN':[],
-          'Mean FP':[],
-          'Mean FN':[],
-          'Mean TP':[],
-          'Mean sensitivity':[],
-          'Mean specificity':[],
-          'Model':[],
-          'Mean AUC':[]}
-for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_predictions_ML.items():
-    sub = int(keys.split('day')[0][3:])
-    day = int(keys.split('day')[1])
-    mean_confM = np.mean(confM,0)
-    std_confM = np.std(confM,0)
-    TN,FP,FN,TP = mean_confM
-    TN_,FP_,FN_,TP_ = std_confM
-    mean_sensitivity = np.mean(sensitivity)
-    std_sensitivity = np.std(sensitivity)
-    mean_specificity = np.mean(specificity)
-    std_specificity = np.std(specificity)
-    mean_AUC = np.mean(item)
-    std_AUC = np.std(item)
-    df_all['Subject'].append(sub)
-    df_all['Day'].append(day)
-    df_all['Mean TN'].append(TN)
-    df_all['Mean FP'].append(FP)
-    df_all['Mean FN'].append(FN)
-    df_all['Mean TP'].append(TP)
-    df_all['Mean sensitivity'].append(mean_sensitivity)
-    df_all['Mean specificity'].append(mean_specificity)
-    df_all['Model'].append('Machine learning')
-    df_all['Mean AUC'].append(mean_AUC)
-for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_detections.items():
-    sub = int(keys.split('day')[0][3:])
-    day = int(keys.split('day')[1])
-    mean_confM = np.mean(confM,0)
-    std_confM = np.std(confM,0)
-    TN,FP,FN,TP = mean_confM
-    TN_,FP_,FN_,TP_ = std_confM
-    mean_sensitivity = np.mean(sensitivity)
-    std_sensitivity = np.std(sensitivity)
-    mean_specificity = np.mean(specificity)
-    std_specificity = np.std(specificity)
-    mean_AUC = np.mean(item)
-    std_AUC = np.std(item)
-    df_all['Subject'].append(sub)
-    df_all['Day'].append(day)
-    df_all['Mean TN'].append(TN)
-    df_all['Mean FP'].append(FP)
-    df_all['Mean FN'].append(FN)
-    df_all['Mean TP'].append(TP)
-    df_all['Mean sensitivity'].append(mean_sensitivity)
-    df_all['Mean specificity'].append(mean_specificity)
-    df_all['Model'].append('FBT')
-    df_all['Mean AUC'].append(mean_AUC)   
-df_all = pd.DataFrame(df_all)   
-df_all = df_all.sort_values(['Subject','Day'])
-df_all = df_all[['Subject','Day','Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
-                 'Mean sensitivity','Mean specificity','Model']]
-df_all.to_csv('%smore measures.csv'%folder,index=False)
 
-df_all_plot = df_all[['Mean AUC','Mean TN','Mean FP','Mean FN','Mean TP',
-                 'Mean sensitivity','Mean specificity','Model']]
-df_all_plot.columns = ['AUC','True negative rate','False positive rate','False negative rate','True positive rate',
-                 'Sensitivity','Specificity','Model']
-df_all_plot['Model'] = df_all_plot['Model'].map({'Machine learning':'Machine learning','FBT':'Filter based\nand thresholding'})
-g = sns.PairGrid(data=df_all_plot,hue='Model',)
-g.map_lower(sns.regplot,)
-g.map_upper(plt.scatter, edgecolor="w")
-g.map_diag(sns.kdeplot,lw=3)
-g.add_legend(fontsize=25)
-g.fig.savefig('%smany measures.png'%folder, bbox_inches='tight',)
 
 
 

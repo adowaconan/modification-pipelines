@@ -1877,6 +1877,7 @@ def data_gathering_pipeline(temp_dictionary,
     return temp_dictionary,sampling,labeling
 
 from sklearn import metrics
+from collections import Counter
 def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False):
     data=[];
     stop = raw.times[-1]-back
@@ -1890,7 +1891,8 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
     data = data.reshape(len(events),-1)
     gold_standard = read_annotation(raw,annotation_file)
     manual_labels,_ = discritized_onset_label_manual(raw,gold_standard,3)
-
+    ratio_threshold = list(Counter(manual_labels).values())[1]/list(Counter(manual_labels).values())[0]
+    print(ratio_threshold)
     
 
     if few:
@@ -1903,7 +1905,8 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
                 test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
             #exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
-            confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            confM_temp = metrics.confusion_matrix(manual_labels[test],
+                                                  exported_pipeline.predict_proba(data[test])[:,1]>ratio_threshold)
             print('confusion matrix\n',confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis])
             TN,FP,FN,TP = confM_temp.flatten()
             sensitivity_ = TP / (TP+FN)
@@ -1915,15 +1918,16 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
             confM.append(confM_temp.flatten())
             sensitivity.append(sensitivity_)
             specificity.append(specificity_)
-        print(metrics.classification_report(manual_labels[test],exported_pipeline.predict(data[test])))
+        print(metrics.classification_report(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1]>ratio_threshold))
         return AUC,fpr,tpr,confM,sensitivity,specificity
     else:
         print('doing fit prediction')
         fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
         for train, test in cv.split(data):
             exported_pipeline.fit(data[train,:],manual_labels[train])
-            fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
-            confM_temp = metrics.confusion_matrix(manual_labels[test],exported_pipeline.predict(data[test]))
+            fp,tp,_ = metrics.roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
+            confM_temp = metrics.confusion_matrix(manual_labels[test],
+                                                  exported_pipeline.predict_proba(data[test])[:,1]>ratio_threshold)
             print('confusion matrix\n',confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis])
             TN,FP,FN,TP = confM_temp.flatten()
             sensitivity_ = TP / (TP+FN)
@@ -1935,7 +1939,8 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
             confM.append(confM_temp.flatten())
             sensitivity.append(sensitivity_)
             specificity.append(specificity_)
-        print(metrics.classification_report(manual_labels[test],exported_pipeline.predict(data[test])))
+        print(metrics.classification_report(manual_labels[test],
+                                            exported_pipeline.predict_proba(data[test])[:,1]>ratio_threshold))
         return AUC,fpr,tpr,confM,sensitivity,specificity
     
     return AUC,fpr,tpr
@@ -2056,7 +2061,7 @@ def compute_two_thresholds(dictionary_data, label='without',plot_flag=False,n_fo
     else:
         return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,result
         
-def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,lower_threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,plot_flag=False):
+def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,lower_threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,auc_threshold=0.5):
     time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,moving_window_size=200,
                                                                                                     lower_threshold=lower_threshold,
                                         syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
@@ -2074,20 +2079,43 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
     confM = [];sensitivity=[];specificity=[];fpr=[];tpr=[]
     if cv == None:
         cv = KFold(n_splits=10,random_state=12345,shuffle=True)
-    for train, test in cv.split(manual_labels):
-        detected,truth,detected_proba = auto_label[train],manual_labels[train],auto_proba[train]
-        temp_auc.append(roc_auc_score(truth,detected_proba))
-        confM_temp = metrics.confusion_matrix(truth,detected)
-        TN,FP,FN,TP = confM_temp.flatten()
-        sensitivity_ = TP / (TP+FN)
-        specificity_ = TN / (TN + FP)
-        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
-        confM.append(confM_temp.flatten())
-        sensitivity.append(sensitivity_)
-        specificity.append(specificity_)
-        fp,tp,t = roc_curve(truth,detected_proba)
-        fpr.append(fp)
-        tpr.append(tp)
-    
-    print(metrics.classification_report(manual_labels,auto_label))
-    return temp_auc,fpr,tpr, confM, sensitivity, specificity
+    if auc_threshold == 0.5:
+        for train, test in cv.split(manual_labels):
+            detected,truth,detected_proba = auto_label[train],manual_labels[train],auto_proba[train]
+            temp_auc.append(roc_auc_score(truth,detected))
+            confM_temp = metrics.confusion_matrix(truth,detected)
+            TN,FP,FN,TP = confM_temp.flatten()
+            sensitivity_ = TP / (TP+FN)
+            specificity_ = TN / (TN + FP)
+            confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+            print(confM_temp)
+            confM.append(confM_temp.flatten())
+            sensitivity.append(sensitivity_)
+            specificity.append(specificity_)
+            fp,tp,t = roc_curve(truth,detected_proba)
+            fpr.append(fp)
+            tpr.append(tp)
+        
+        print(metrics.classification_report(manual_labels,auto_label))
+        return temp_auc,fpr,tpr, confM, sensitivity, specificity
+    else:
+        auc_threshold = list(Counter(auto_label).values())[1]/(list(Counter(auto_label).values())[0]+list(Counter(auto_label).values())[1])
+        for train, test in cv.split(manual_labels):
+            truth,detected_proba = manual_labels[train],auto_proba[train]
+            detected = detected_proba > auc_threshold
+            temp_auc.append(roc_auc_score(truth,detected_proba))
+            confM_temp = metrics.confusion_matrix(truth,detected)
+            TN,FP,FN,TP = confM_temp.flatten()
+            sensitivity_ = TP / (TP+FN)
+            specificity_ = TN / (TN + FP)
+            confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+            print(confM_temp)
+            confM.append(confM_temp.flatten())
+            sensitivity.append(sensitivity_)
+            specificity.append(specificity_)
+            fp,tp,t = roc_curve(truth,detected_proba)
+            fpr.append(fp)
+            tpr.append(tp)
+        
+        print(metrics.classification_report(manual_labels,auto_proba>auc_threshold))
+        return temp_auc,fpr,tpr, confM, sensitivity, specificity

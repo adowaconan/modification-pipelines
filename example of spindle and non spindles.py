@@ -50,35 +50,11 @@ for f in fif_files[:1]:
     raw_ = mne.io.read_raw_fif('D:\\NING - spindle\\DatabaseSpindles\\'+f,preload=True,add_eeg_ref=False)
     raw2_ = mne.io.read_raw_fif('D:\\NING - spindle\\DatabaseSpindles\\'+f,preload=True,add_eeg_ref=False)
 raw_.filter(11,16)
-#result,auc,auto,manual,times,auto_proba = new_data_pipeline(raw2,
-#                            'D:\\NING - spindle\\DatabaseSpindles\\Visual_scoring1_excerpt1.txt',
-#                            'D:\\NING - spindle\\DatabaseSpindles\\Hypnogram_excerpt1.txt',
-#                            lower_threshold=.48,higher_threshold=3.48)
-#dreams= [result,auc,auto,manual,times,auto_proba]
-#pickle.dump(dreams, open('dreams 1.p','wb'))
+
 dreams = pickle.load(open('dreams 1.p','rb'))
 dpoint = 637.2200	; dduration = 1.0200
 dpoint_auto = 875.050000; dduration_atuo = 1.890000
 
-#examples = np.random.choice(annotation.Onset.values,3,replace=False)
-#fig, axes = plt.subplots(nrows=2,ncols=3,figsize=(16,8))
-#ax = axes[0]
-#for ii,timepoint in enumerate(examples):
-#    seg, time = eegPinelineDesign.cut_segments(raw2,timepoint+1,0,3)
-#    ax[ii].plot(time,seg[0,:],)
-#    ax[ii].set(xticklabels='')
-#    #ax[ii].set_xlabel('Time (Sec)',fontweight='bold')
-#    ax[ii].set_title('Example %d'%(ii+1),fontweight='bold')
-#ax[0].set_ylabel('$\mu$V',fontweight='bold')
-#ax = axes[1]
-#for ii,timepoint in enumerate(examples):
-#    seg, time = eegPinelineDesign.cut_segments(raw,timepoint+1,0,3)
-#    ax[ii].plot(time,seg[0,:],)
-#    ax[ii].set_xlabel('Time (Sec)',fontweight='bold')
-#    ax[ii].set(ylim=(-40,40))
-#ax[0].set_ylabel('$\mu$V',fontweight='bold')
-#fig.savefig('example of manually annotated spindles.png')
-#np.save('auto durations.npy',durations)
 
 channelList = ['F3','F4','C3','C4','O1','O2']
 fig, axes = plt.subplots(nrows=2,ncols=3,figsize=(16,8))
@@ -121,7 +97,7 @@ ax[0].set_ylabel('$\mu$V',fontweight='bold')
 seg, time = eegPinelineDesign.cut_segments(raw_, dpoint,0)
 ax[2].plot(time, seg[0,:],label='Cz')
 ax[2].axvspan(dpoint-dduration/2,dpoint+dduration/2,color='red',alpha=0.5,
-  label='Onest: %d sec\nDuration: %.2f sec'%(dpoint-dduration/2,dduration/2))
+  label='Onset: %d sec\nDuration: %.2f sec'%(dpoint-dduration/2,dduration/2))
 #ax[2].set(xticks=[dpoint-dduration/2],xticklabels=['%d + %.2f'%(dpoint-dduration/2,dduration/2)],xlabel='')
 ax[2].set(xlabel='')
 ax[2].set_xlabel('Time (Sec)',fontweight='bold')
