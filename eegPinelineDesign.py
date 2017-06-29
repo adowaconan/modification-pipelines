@@ -1891,8 +1891,7 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
     data = data.reshape(len(events),-1)
     gold_standard = read_annotation(raw,annotation_file)
     manual_labels,_ = discritized_onset_label_manual(raw,gold_standard,3)
-    ratio_threshold = list(Counter(manual_labels).values())[1]/list(Counter(manual_labels).values())[0]
-    print(ratio_threshold)
+    
     
 
     if few:
@@ -1901,6 +1900,8 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
         #cv = KFold(n_splits=10,random_state=123345,shuffle=True)
         for ii in range(5):
             test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
+            ratio_threshold = list(Counter(manual_labels[test]).values())[1]/(list(Counter(manual_labels[test]).values())[0]+list(Counter(manual_labels[test]).values())[1])
+            print(ratio_threshold)
             while sum(manual_labels[test]) < 1:
                 test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
             #exported_pipeline.fit(data[train,:],manual_labels[train])
@@ -1921,9 +1922,12 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
         print(metrics.classification_report(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1]>ratio_threshold))
         return AUC,fpr,tpr,confM,sensitivity,specificity
     else:
+        
         print('doing fit prediction')
         fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
         for train, test in cv.split(data):
+            ratio_threshold = list(Counter(manual_labels[train]).values())[1]/(list(Counter(manual_labels[train]).values())[0]+list(Counter(manual_labels[train]).values())[1])
+            print(ratio_threshold)
             exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = metrics.roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
             confM_temp = metrics.confusion_matrix(manual_labels[test],

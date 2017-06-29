@@ -169,8 +169,8 @@ def new_data_pipeline(raw,annotation_file_name,Hypnogram_file_name,
             clf.fit(decision_features[:-1],auto)
         auto_proba=clf.predict_proba(decision_features)[:,-1]
     
-    auc = roc_auc_score(manual, auto)
-    return result,auc,auto,manual,times,auto_proba
+    auc_ = roc_auc_score(manual, auto)
+    return result,auc_,auto,manual,times,auto_proba
 
 fif_files = [f for f in os.listdir() if ('fif' in f)]
 spindle_files = [f for f in os.listdir() if ('scoring1' in f)]
@@ -398,9 +398,10 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
     labels = manual_labels
     fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
     idx_labels = np.arange(len(manual_labels))
-    ratio_threshold = list(Counter(manual_labels).values())[1]/list(Counter(manual_labels).values())[0]
+    
     if True:#raw.info['sfreq'] == 200:
         for train, test in cv.split(manual_labels):
+            ratio_threshold = list(Counter(manual_labels[train]).values())[1]/(list(Counter(manual_labels[train]).values())[0]+list(Counter(manual_labels[train]).values())[1])
 #            train,test = train_test_split(idx_labels,random_state=12345)
             exported_pipeline = make_pipeline(
             make_union(
