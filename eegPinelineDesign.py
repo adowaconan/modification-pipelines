@@ -1371,8 +1371,8 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
         peak_time[names]=[]
         segment,_ = raw[ii,:]
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) 
-        mph[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + lower_threshold * trimmed_std(RMS[ii,:],0.05) 
-        mpl[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + higher_threshold * trimmed_std(RMS[ii,:],0.05)
+        mph[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + lower_threshold * trimmed_std(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) 
+        mpl[names] = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + higher_threshold * trimmed_std(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05)
         pass_ = RMS[ii,:] > mph[names]#should be greater than then mean not the threshold to compute duration
 
         up = np.where(np.diff(pass_.astype(int))>0)
@@ -1900,10 +1900,11 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
         #cv = KFold(n_splits=10,random_state=123345,shuffle=True)
         for ii in range(5):
             test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
-            ratio_threshold = list(Counter(manual_labels[test]).values())[1]/(list(Counter(manual_labels[test]).values())[0]+list(Counter(manual_labels[test]).values())[1])
-            print(ratio_threshold)
             while sum(manual_labels[test]) < 1:
                 test = np.random.choice(np.arange(len(manual_labels)),size=int(len(manual_labels)*0.1),replace=False)
+            ratio_threshold = list(Counter(manual_labels[test]).values())[1]/(list(Counter(manual_labels[test]).values())[0]+list(Counter(manual_labels[test]).values())[1])
+            print(ratio_threshold)
+            
             #exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
             confM_temp = metrics.confusion_matrix(manual_labels[test],
