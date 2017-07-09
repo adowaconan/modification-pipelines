@@ -2124,3 +2124,20 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
         
         print(metrics.classification_report(manual_labels,auto_proba>auc_threshold))
         return temp_auc,fpr,tpr, confM, sensitivity, specificity
+from random import shuffle
+from scipy.stats import percentileofscore
+def Permutation_test(data1, data2, n1=100,n2=100):
+    p_values = []
+    for simulation_time in range(n1):
+        shuffle_difference =[]
+        experiment_difference = np.mean(data1,0) - np.mean(data2,0)
+        vector_concat = np.concatenate([data1,data2])
+        for shuffle_time in range(n2):
+            shuffle(vector_concat)
+            new_data1 = vector_concat[:len(data1)]
+            new_data2 = vector_concat[len(data1):]
+            shuffle_difference.append(np.mean(new_data1) - np.mean(new_data2))
+        p_values.append(min(percentileofscore(shuffle_difference,experiment_difference)/100,
+                            (100-percentileofscore(shuffle_difference,experiment_difference))/100))
+    
+    return p_values,np.mean(p_values),np.std(p_values)
