@@ -20,8 +20,8 @@ file_in_fold=eegPinelineDesign.change_file_directory('D:\\NING - spindle\\traini
 channelList = ['F3','F4','C3','C4','O1','O2']
 list_file_to_read = [files for files in file_in_fold if ('fif' in files) and ('nap' in files)]
 annotation_in_fold=[files for files in file_in_fold if ('txt' in files) and ('annotations' in files)]
-lower = np.arange(0.1,1.1,0.1)
-higher = np.arange(2.5,3.6,0.1)
+lower = np.arange(0.1,1.6,0.1)
+higher = np.arange(2.0,3.6,0.1)
 pairs = [(l,h) for l in lower for h in higher]
 saving_dir = 'D:\\NING - spindle\\training set\\re-run\\'
 if not os.path.exists(saving_dir):
@@ -54,7 +54,7 @@ for file in list_file_to_read:
         a.get_epochs()
         a.get_annotation(annotation)
         a.mauanl_label()
-        if a.spindles.shape[0] < 40:
+        if a.spindles.shape[0] < 20:
             print(sub,day,'pass')
             pass
         else:

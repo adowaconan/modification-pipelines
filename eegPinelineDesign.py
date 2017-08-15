@@ -1509,6 +1509,11 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
         spindle_end   = spindle + 1.5
         a =  np.logical_or((intervalCheck(time_interval,spindle_start)),
                            (intervalCheck(time_interval,spindle_end)))
+        """ || ==================|| time_interval
+                ||=======================|| and spindle start is in the time interval"""
+                
+        """||===================|| time_interval
+        ||===============|| and spindle end is in the time interval"""
         return a
     else:
         spindle_start = spindle - spindle_duration/2.
@@ -1526,7 +1531,7 @@ def discritized_onset_label_manual(raw,df,spindle_segment,front=300,back=100):
         time_interval = [time_interval_1,time_interval_2]
         for spindle in df['Onset']:
             temp.append([time_interval,spindle])
-            if spindle_comparison(time_interval,spindle,spindle_segment):
+            if spindle_comparison(time_interval,spindle,spindle_segment):# if the time interval overlaps a spindle (any spindle), with assuming the spindle is 2 seconds long
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels,temp
 def discritized_onset_label_auto(raw,df,spindle_segment,front=300,back=100):

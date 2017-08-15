@@ -75,7 +75,7 @@ class Filter_based_and_thresholding:
                 the predicted probabilities/predicted labels, or optimizing the pipeline
     
     """
-    def __init__(self,channelList=None,moving_window_size=200,
+    def __init__(self,channelList=None,moving_window_size=500,
                 syn_channels=3,
                 l_bound=0.5,
                 h_bound=2,tol=1,
@@ -272,8 +272,6 @@ class Filter_based_and_thresholding:
         psds = self.psds
         freq = self.freq
         validation_windowsize = self.validation_windowsize
-        front = self.front
-        back = self.back
         raw = self.raw
         
         result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})
