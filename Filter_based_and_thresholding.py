@@ -284,7 +284,7 @@ class Filter_based_and_thresholding:
         
         auto_label,_ = discritized_onset_label_auto(epochs,raw,result,
                                                  validation_windowsize)
-        self.auto_label = auto_label
+        self.auto_labels = auto_label
         self.decision_features = features
         
     def fit(self,proba_exclude=False,proba_threshold=0.5,n_jobs=1):
@@ -293,7 +293,7 @@ class Filter_based_and_thresholding:
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
         decision_features = self.decision_features
-        auto_label = self.auto_label
+        auto_labels = self.auto_labels
         cv = KFold(n_splits=5,shuffle=True,random_state=12345)
         clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),
                                    cv=cv,
@@ -306,22 +306,22 @@ class Filter_based_and_thresholding:
                         ('estimator',clf)])
         
         try:
-            auto_proba = cross_val_predict(clf,decision_features,auto_label,cv=cv,method='predict_proba',n_jobs=n_jobs)
+            auto_proba = cross_val_predict(clf,decision_features,auto_labels,cv=cv,method='predict_proba',n_jobs=n_jobs)
             auto_proba = auto_proba[:,-1]
         except:
             try:
-                auto_proba = cross_val_predict(clf,decision_features,auto_label,cv=5,method='predict_proba',n_jobs=n_jobs)
+                auto_proba = cross_val_predict(clf,decision_features,auto_labels,cv=5,method='predict_proba',n_jobs=n_jobs)
                 auto_proba = auto_proba[:,-1]
             except:
                 
-                auto_proba = cross_val_predict(clf,decision_features,auto_label,cv=3,method='predict_proba',n_jobs=n_jobs)
+                auto_proba = cross_val_predict(clf,decision_features,auto_labels,cv=3,method='predict_proba',n_jobs=n_jobs)
                 auto_proba = auto_proba[:,-1]
         if proba_exclude:
-            idx_ = np.where(auto_proba > proba_threshold)
-            auto_label = auto_label[idx_]
-            auto_proba = auto_proba[idx_]
-        self.auto_label = auto_label
-        self.auto_proba = auto_proba
+            idx_ = np.where(auto_proba < proba_threshold)
+            auto_labels[idx_] = 0
+            #auto_proba[idx_]
+        self.auto_labels = auto_labels
+        #self.auto_proba = auto_proba
         
     def mauanl_label(self):
         raw = self.raw
