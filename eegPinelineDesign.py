@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 #from obspy.signal.filter import bandpass
 
 def change_file_directory(path_directory):
-    '''Change working directory'''
+    '''Change working directory, and return files that exist in the changed to directory'''
     current_directory=os.chdir(path_directory)
     #print(os.listdir(current_directory))
     return os.listdir(current_directory)
@@ -39,6 +39,7 @@ def split_type_of_files():
     look at all the files in the directory.
         The reason I have this function is because it create a file
     space for looping the feature extraction"""
+    """However, we do not use this function any more"""
     directoryList = os.listdir(os.getcwd())
     for item in directoryList:
         if EEGFind.search(item):
@@ -50,7 +51,8 @@ def split_type_of_files():
 
 
 def pick_sample_file(EEGfile,n=0):
-    """I use it as a way to get names for my dictionary variables"""
+    """this function is used as a way to get names for dictionary variables"""
+    """It takes an EEG file string and return the string before the dot"""
     file_to_read=EEGfile[n]
     fileName=file_to_read.split('.')[0]
     return file_to_read,fileName
@@ -72,7 +74,9 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
               eogReject=180,n_ch=-2):
     """ not just load the data, but also remove artifact by using mne.ICA
         Make sure 'LOC' or 'ROC' channels are in the channel list, because they
-        are used to detect muscle and eye blink movements"""
+        are used to detect muscle and eye blink movements on EEG data without
+        any events, such as sleep EEG recordings
+        """
         
         
     """
@@ -83,12 +87,11 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
     eogReject: change in amplitude in microvoltage of eog channels
     n_ch: index of channel list, use '-2' for excluding AUX and stimuli channels
     """
-    c=200
-    raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True,)
-    if 'LOc' in raw.ch_names:
+    c=200 # low pass cutoff point used before we proceed to the final data
+    # read raw data, scale set to 1 after an update of MNE python
+    raw = mne.io.read_raw_brainvision(file_to_read,scale=1,preload=True,)
+    if 'LOc' in raw.ch_names:# if eye blink channels are in the channel list
         try:
-            #raw.resample(500,npad='auto')
-            #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']
             raw.set_channel_types({'LOc':'eog','ROc':'eog'})
             chan_list=raw.ch_names[:n_ch]#exclude AUX and stim channel
             if 'LOc' not in chan_list:
@@ -97,13 +100,16 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
                 chan_list.append('ROc')
         
             raw.pick_channels(chan_list)
+            # pick only eeg channels to do the first level filtering: low pass filter
+            #
             picks=mne.pick_types(raw.info,meg=False,eeg=True,eog=False,stim=False)
             raw.filter(None,c,l_trans_bandwidth=0.01,
                        h_trans_bandwidth='auto',filter_length=30,picks=picks)
+            # compute noise covariance based on continuous data (average references)
             noise_cov=mne.compute_raw_covariance(raw.set_eeg_reference(),picks=picks)# re-referencing to average
             raw.notch_filter(np.arange(60,241,60), picks=picks)
             reject = dict(eeg=eegReject,eog=eogReject)
-        
+            # set up ICA on EEG channel data
             ica = mne.preprocessing.ICA(n_components=0.95,n_pca_components =.95,
                                         max_iter=3000,method='extended-infomax',
                                         noise_cov=noise_cov, random_state=0)
@@ -118,10 +124,10 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             except:
                 pass
         except:
-        
+            # same as above, except we filer between 1 and 200 Hz
             print('alternative')
             pass
-            raw = mne.io.read_raw_brainvision(file_to_read,scale=1e6,preload=True)
+            raw = mne.io.read_raw_brainvision(file_to_read,scale=1,preload=True)
             raw.resample(500)
             #chan_list=['F3','F4','C3','C4','O1','O2','ROc','LOc']            
             chan_list=raw.ch_names[:n_ch]
@@ -160,8 +166,11 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
             a,b=ica.find_bads_eog(raw)
             ica.exclude += a
     else:
-        print('no channel names')
+        # if the channel name is not standard, map the list we had above this function
         
+        print('no channel names')
+        # for some of my data, the scale is strange, but this should be be a
+        # main concern for general EEG data
         raw = mne.io.read_raw_brainvision(file_to_read,scale=1e4,preload=True)
         #raw.resample(500)
         raw.rename_channels(chan_dict)
@@ -210,6 +219,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
 
 def annotation_to_labels(TXTfiles,fileName,label='markon',last_letter=-1):
     """This only works on very particular data structure file."""
+    ##################"""This function is no longer used"""###################
     annotation_to_read=[x for x in TXTfiles if fileName in x]
     file = pd.read_csv(annotation_to_read[0])
     labelFind = re.compile(label,re.IGNORECASE)
@@ -224,6 +234,9 @@ def annotation_to_labels(TXTfiles,fileName,label='markon',last_letter=-1):
             windowLabel[idx] = windowLabel[idx -1]
     return windowLabel
 def relabel_to_binary(windowLabel,label=['2','3']):
+    """This function relabel stage 2 and 3 sleep windows to '1'
+    and it is used for classifying sleep stages
+    """
     YLabel=[]
     for row in windowLabel:
         if row[0] == label[0] or row[0] == label[1]:
@@ -261,10 +274,12 @@ def structure_to_data(channelList,YLabel,raw,sample_points=1000):
 
 
 def merge_dicts(dict1,dict2):
+    """merge two dictionaries if they have the same keys"""
     for key, value in dict2.items():
         dict1.setdefault(key,[]).extend(value)
     return dict1
-
+###################################################################
+########### some code for make my own logistic regression #############
 def logistic_func(theta, x):
     return 1./(1+np.exp(x.dot(theta)))
 def log_gradient(theta, x, y):
@@ -304,7 +319,12 @@ def pred_values(theta, X, hard=True,one_sample=False):
     if hard:
         return pred_value
     return pred_prob
+################## end of logistic regression ###############
+########################################################################
 def SK_to_data(channelList,markPairs,dataLabels,raw):
+    """this function is no longer used because many changes,
+    and I lost track of the changes
+    """
     data={}
     for channel_names in channelList:
         data[channel_names]=[]
@@ -332,6 +352,8 @@ def annotation_file(TXTFiles,sample_number=0):
     return file
 
 def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
+    """this function is a direct copy from scit kit learn confusion matrix
+     tutorial"""
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -343,6 +365,11 @@ def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
 def center_window_by_max_amplitude(raw,time,channelList,windowsWidth=2.0):
     '''The function goes through all channels and return data.frame of
        centered data'''
+    """I no longer use this function
+    Although this function return the peak of the signal at a window, but 
+    because the window was not define as guassian or suitable form, the output
+    is questionable
+    """
     startPoint=time-windowsWidth;endPoint=time+windowsWidth
     start,stop=raw.time_as_index([startPoint,endPoint])
     tempsegment,timespan=raw[:,start:stop]
@@ -360,6 +387,7 @@ def center_window_by_max_amplitude(raw,time,channelList,windowsWidth=2.0):
 def CenterAtPeakOfWindow(timePoint,windowSize,raw,channelIndex):
     '''Simplification of the function above, return only the centered data time
        point.'''
+    """simplification of a questionable function, making this one questionable"""
     filter_tempSegment,timeSpan = cut_segments(raw,timePoint,channelIndex)
     peakInd = np.array(find_peaks_cwt(filter_tempSegment[0,:],np.arange(1,500)))
     max_in_peakInd=np.argmax(abs(filter_tempSegment[0,peakInd]))
@@ -367,6 +395,8 @@ def CenterAtPeakOfWindow(timePoint,windowSize,raw,channelIndex):
     return centerxval
 
 def from_time_markers_to_sample(channelList,raw,windowsWidth=2.0):
+    """this function performs simple segmentation of the data,
+    The window is a sharp cut window"""
     data={}
     for names in channelList:
         data[names]=[]
@@ -377,12 +407,15 @@ def from_time_markers_to_sample(channelList,raw,windowsWidth=2.0):
     return data
 
 def standardized(x):
+    '''explicit mean centering standardization,
+    works only on 1-D vector'''
     normalized_x = (x-np.mean(x))/np.std(x)
     return normalized_x
 
 
 
 def add_channels(inst, data, ch_names, ch_types):
+    """An unsucessful try on adding extract channel to the existed EEG data"""
     from mne.io import _BaseRaw, RawArray
     from mne.epochs import _BaseEpochs, EpochsArray
     from mne import create_info
@@ -401,6 +434,9 @@ def add_channels(inst, data, ch_names, ch_types):
     return inst.add_channels([new_inst], copy=True)
 
 def cut_segments(raw,center,channelIndex,windowsize = 1.5):
+    """This function takes the center of the signaling window and cut
+    a sgement of the signal
+    Implementing a Hamming window"""
     startPoint=center-windowsize;endPoint=center+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     tempSegment,timeSpan=raw[channelIndex,start:stop]
@@ -408,6 +444,10 @@ def cut_segments(raw,center,channelIndex,windowsize = 1.5):
 
 
 def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
+    """Threshold test implementation of an old paper
+    Passing alpha, 11-16 Hz, 30-40 Hz bandpass data with some
+    thresholds to determine if a segment of data is dominated by eight one of 
+    the above frequencies"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     start,stop=raw.time_as_index([startPoint,endPoint])
     se,timeSpan=raw[channelID,start:stop]
@@ -427,14 +467,19 @@ def Threshold_test(timePoint,raw,channelID,windowsize=2.5):
 
 
 def getOverlap(a,b):
+    """takes two arrays and return if they are overlapped
+    This is a numerical computation. [1,2.2222] is overlaped with
+    [2.2222,2.334]"""
     return max(0,min(a[1],b[1]) - max(a[0],b[0]))
 def intervalCheck(a,b,tol=0):#a is an array and b is a point
     return a[0]-tol <= b <= a[1]+tol
 def spindle_overlapping_test(spindles,timePoint,windowsize,tolerance=0.01):
+    """a testing function, and it is no longer used"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     return all(getOverlap([startPoint,endPoint],[instance-windowsize,instance+windowsize])<=tolerance for instance in spindles)
 
 def used_windows_check(timePoint,used_time_windows,windowsize,tolerance=0.01):
+    """a testing function, and it is no longer used"""
     startPoint=timePoint-windowsize;endPoint=timePoint+windowsize
     return all(getOverlap([startPoint,endPoint],[lower,upper])<=tolerance for (lower,upper) in used_time_windows)
 
@@ -594,18 +639,24 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
         plt.show()
 
 def window_rms(a, window_size):
-  a2 = np.power(a,2)
-  window = signal.gaussian(window_size,(window_size/.68)/2)
-  return np.sqrt(np.convolve(a2, window, 'same')/len(a2)) * 1e2
+    """One of the core functions
+    define a gaussian window based on the given window length (in sample points)
+    slide this gaussian window to compute the root mean sqaure of the signal,
+    returns an evelope measure of the signal"""
+    a2 = np.power(a,2)
+    window = signal.gaussian(window_size,(window_size/.68)/2)
+    return np.sqrt(np.convolve(a2, window, 'same')/len(a2)) * 1e2
 
 
 def distance_check(list_of_comparison, time):
+    """test function, no longer used"""
     list_of_comparison=np.array(list_of_comparison)
     condition = list_of_comparison - time < 1
     return condition
 
 
 def RMS_pass(pass_,time,RMS):
+    '''Test function, it is no longer used'''
     temp = []
     up = np.where(np.diff(pass_.astype(int))>0)
     down = np.where(np.diff(pass_.astype(int))<0)
@@ -626,6 +677,7 @@ def RMS_pass(pass_,time,RMS):
     return temp
 
 def RMS_calculation(intervals,dataSegment,mul):
+    """unit test function, and it is no longer used"""
     segment = dataSegment[0,:]
     time = np.linspace(intervals[0],intervals[1],len(segment))
     RMS = window_rms(segment,200)
@@ -636,6 +688,13 @@ def RMS_calculation(intervals,dataSegment,mul):
 
 
 def find_time(peak_time,number=3):
+    """unit test function, 
+    for the spindle onsets found in the mean RMS, how many of them were also
+    found in the individual channels?
+    1. if nothing was found, do nothing on individual channels eventhough 
+        we might have something in the individual channels
+    2. else we the one that is closest to the currently looked at onset
+    3. using a try-except because I want to avoid empty found in 1."""
     time_find=[]
     for item in peak_time['mean']:
         temp_timePoint=[]
@@ -654,6 +713,9 @@ def find_time(peak_time,number=3):
     return time_find
 
 def validation(val_file,result,tol=1):
+    """match the predicted spindle locally
+    if the predicted spindle is not 1 second 
+    away from the true spindle, we have a match"""
     file2 = pd.read_csv(val_file,sep=',')
     labelFind = re.compile('spindle',re.IGNORECASE)
     spindles=[]# take existed annotations
@@ -674,7 +736,10 @@ def validation(val_file,result,tol=1):
             mismatch.append(item)
     return spindles, match, mismatch
 from scipy.stats import hmean,trim_mean
-def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,majority=3,mul=0.8):
+def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,
+                         majority=3,mul=0.8):
+    """first end to end attempt of the pipeline.
+    """
     raw = mne.io.read_raw_fif(file_to_read,preload=True,add_eeg_ref=False)
     
     raw.filter(lowCut,highCut,l_trans_bandwidth=0.1)
@@ -738,10 +803,13 @@ def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,major
     return peak_time, result,spindles, match, mismatch
 
 def TS_analysis(raw,epch,picks,l_freq=8,h_freq=12):
+    """returns power spectral density and frequency correspond to the power spectral"""
     psd_,f=psd_multitaper(raw,tmin=epch[0],tmax=epch[1],fmin=l_freq,fmax=h_freq,picks=picks,n_jobs=-1)
     return psd_,f
 
 def make_overlap_windows(raw,epoch_length=10):
+    """get a many row by 2 columns matrix
+    each row is the start and end point of the window"""
     candidates = np.arange(raw.first_samp/1000, raw.last_samp/1000,epoch_length/2)
     epochs=[]
     for ii,item in enumerate(candidates):
@@ -754,6 +822,8 @@ def make_overlap_windows(raw,epoch_length=10):
 
 
 def regressionline(intercept,s,x_range):
+    """plot regression line using intercept and s, which is the slope
+    only works on one IV regression"""
     try:
         x = np.array(x_range)
         y = intercept*np.ones(len(x)) + s*x
@@ -761,6 +831,18 @@ def regressionline(intercept,s,x_range):
         y = intercept + s*x
     return y
 def epoch_activity(raw,picks,epoch_length=10,l=1,h=200):
+    """compute power spectral density over series overlapping windows
+    was used for classifying sleep stages
+    
+    returns delta 1: 1 - 2 Hz
+            delta 2: 2 - 4 Hz
+            theta: 4 - 8 Hz
+            alpha: 8 - 12 Hz
+            beta: 12 - 20 Hz
+            gamma (low): 20 - 40
+            slow spindle: 10 - 12
+            fast spindle: 12 - 14
+            customized range: l - h Hz"""
     # make epochs based on epoch length (10 secs), and overlapped by half of the window
     epochs = make_overlap_windows(raw,epoch_length=epoch_length)
     
@@ -809,10 +891,12 @@ def epoch_activity(raw,picks,epoch_length=10,l=1,h=200):
     return target_spindle,alpha_C,DT_C,ASI,activity,ave_activity,psd_delta1,psd_delta2,psd_theta,psd_alpha,psd_beta,psd_gamma,slow_spindle,fast_spindle,slow_range,fast_range,epochs
 
 def mean_without_outlier(data):
+    """basically it is scipy.stats.trimmed_mean"""
     outlier_threshold = data.mean() + data.std()*3
     temp_data = data[np.logical_and(-outlier_threshold < data, data < outlier_threshold)]
     return temp_data.mean()
 def trimmed_std(data,percentile):
+    """basically it is scipy.stats.trimmed_data and take the std"""
     temp=data.copy()
     temp.sort()
     percentile = percentile / 2
@@ -820,10 +904,28 @@ def trimmed_std(data,percentile):
     high = int((1. - percentile) * len(temp))
     return temp[low:high].std(ddof=0)
 def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving_window_size=200,
-                                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1):
-    mul=threshold;nn=3.5
+                                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,
+                                             h_bound=2,tol=1):
+    """First function implement the filter based and thresholding model. This function is first published on
+    my OSF page
     
+    raw: raw EEG data object, loaded by the MNE python
+    channelList: channels of interest
+    file_to_read: useless argument, will be removed in the later versions
+    moving_window_size: window size for the sliding window. This sliding window is used for computing the evelope
+     of the signal. Unit in number of sample points. Be careful of the sampling rate
+    threshold: lower threshold. Kinda the lower boundary of the cutoff
+    syn_channels: channel agreement criterion
+    l_freq: low cutoff frequency
+    h_freq: high cutoff frequency
+    l_bound: shortest duration of a spindle
+    h_bound: longer duration of a spindle
+    tol: temporal toleration used with the syn_channels
+    """
+    mul=threshold;nn=3.5# this becomes one of the arguments in the later version
+    # preallocate time series array for later use
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+    # preallocate empty matrices (channels by full sample length of the data)
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
     peak_time={} #preallocate
     fig=plt.figure(figsize=(40,40))
@@ -832,33 +934,38 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     ax2=plt.subplot(313,sharex=ax)
     for ii, names in enumerate(channelList):
 
-        peak_time[names]=[]
-        segment,_ = raw[ii,:]
-        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+        peak_time[names]=[]#preallocate empty list for storage
+        segment,_ = raw[ii,:] # get data of one channel
+        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of some samples
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
         pass_ = RMS[ii,:] > mph
 
-        up = np.where(np.diff(pass_.astype(int))>0)
-        down = np.where(np.diff(pass_.astype(int))<0)
+        up = np.where(np.diff(pass_.astype(int))>0)# find the intersections where the RMS goes up
+        down = np.where(np.diff(pass_.astype(int))<0)# intesections where the RMS goes down
         up = up[0]
         down = down[0]
         ###############################
         #print(down[0],up[0])
+        # in some cases, the first point is down, which makes no sense if we want the general shape of convex
         if down[0] < up[0]:
             down = down[1:]
         #print(down[0],up[0])
         #############################
+        # after taking care of the beginning, we take care of the end. Making sure that these two lists have the
+        # same length ----> will be paired up to be time intervals/windows
         if (up.shape > down.shape) or (up.shape < down.shape):
             size = np.min([up.shape,down.shape])
             up = up[:size]
             down = down[:size]
         C = np.vstack((up,down))
         for pairs in C.T:
-            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
-                #TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:# only take those match the duration criterion
+            
+                #search for the peak of the RMS, not the original singal
                 SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
-                if np.max(SegmentForPeakSearching) < mpl:
+                if np.max(SegmentForPeakSearching) < mpl:# if the peak of the RMS is too high, we also take it out,
+                # otherwise, we keep them and save the durations, onset of the peak, and the peak
                     temp_temp_time = time[pairs[0]:pairs[1]]
                     ints_temp = np.argmax(SegmentForPeakSearching)
                     peak_time[names].append(temp_temp_time[ints_temp])
@@ -871,7 +978,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         ax1.set(xlabel='time',ylabel='Amplitude')
         ax.axhline(mph,color='r',alpha=0.03)
         ax2.legend();ax.legend()
-
+    # do the same thing to the mean RMS
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
@@ -1005,7 +1112,13 @@ def pass_(distance):
             down_=d
     return (up_,down_)
 from scipy.stats import linregress
-def find_title_peak(x,y):
+def find_tilted_peak(x,y):
+    """for power spectral density plots, they are some curves that are tilted
+    This function is to fit a regression by tilting the x axis to match the 
+    titled degree
+    the fitting of the regression is done on a subset of the data because I 
+    wanted to look at only the range of the spindle frequency
+    """
     x=x[:100];y=y[:100]
     s,intercept,_,_,_ = linregress(x=x,y=y)
     y_pre = regressionline(intercept,s,x)
@@ -1022,219 +1135,220 @@ def find_title_peak(x,y):
     #print(maxArg,idx_devia)
     return idx_devia,maxArg
     
-def spindle_validation_step1(raw,channelList,moving_window_size=200,
-                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,
-                             l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,front=300,
-                             back=100):
-    nn=higher_threshold
-    
-    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
-    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
-    peak_time={} #preallocate
-    sfreq=raw.info['sfreq']
-    for ii, names in enumerate(channelList):
-
-        peak_time[names]=[]
-        segment,_ = raw[ii,:]
-        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
-        mph = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
-        mpl = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
-
-        up = np.where(np.diff(pass_.astype(int))>0)
-        down = np.where(np.diff(pass_.astype(int))<0)
-        up = up[0]
-        down = down[0]
-        ###############################
-        #print(down[0],up[0])
-        if down[0] < up[0]:
-            down = down[1:]
-        #print(down[0],up[0])
-        #############################
-        if (up.shape > down.shape) or (up.shape < down.shape):
-            size = np.min([up.shape,down.shape])
-            up = up[:size]
-            down = down[:size]
-        C = np.vstack((up,down))
-        for pairs in C.T:
-            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
-                #TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
-                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
-                if np.max(SegmentForPeakSearching) < mpl:
-                    temp_temp_time = time[pairs[0]:pairs[1]]
-                    ints_temp = np.argmax(SegmentForPeakSearching)
-                    peak_time[names].append(temp_temp_time[ints_temp])
-                    
-        
-
-    peak_time['mean']=[];peak_at=[];duration=[]
-    RMS_mean=hmean(RMS)
-    
-    mph = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + threshold * RMS_mean.std()
-    mpl = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + nn * RMS_mean.std()
-    pass_ =RMS_mean > mph
-    up = np.where(np.diff(pass_.astype(int))>0)
-    down= np.where(np.diff(pass_.astype(int))<0)
-    up = up[0]
-    down = down[0]
-    ###############################
-    #print(down[0],up[0])
-    if down[0] < up[0]:
-        down = down[1:]
-    #print(down[0],up[0])
-    #############################
-    if (up.shape > down.shape) or (up.shape < down.shape):
-        size = np.min([up.shape,down.shape])
-        up = up[:size]
-        down = down[:size]
-    C = np.vstack((up,down))
-    for pairs in C.T:
-        
-        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
-            #TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
-            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
-            if np.max(SegmentForPeakSearching)< mpl:
-                temp_time = time[pairs[0]:pairs[1]]
-                ints_temp = np.argmax(SegmentForPeakSearching)
-                peak_time['mean'].append(temp_time[ints_temp])
-                peak_at.append(SegmentForPeakSearching[ints_temp])
-                duration_temp = time[pairs[1]] - time[pairs[0]]
-                duration.append(duration_temp)
-    
-
-
-    time_find=[];mean_peak_power=[];Duration=[]
-    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
-        temp_timePoint=[]
-        for ii, names in enumerate(channelList):
-            try:
-                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
-            except:
-                temp_timePoint.append(item + 2)
-        try:
-            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
-                time_find.append(float(item))
-                mean_peak_power.append(PEAK)
-                Duration.append(duration_time)
-        except:
-            pass
-    
-        
-    return time_find,mean_peak_power,Duration,peak_time,peak_at
-def spindle_validation_with_sleep_stage(raw,channelList,annotations,moving_window_size=200,threshold=.9,
-                                        syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
-                                        front=300,back=100):
-    
-    nn=higher_threshold
-    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
-    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
-    peak_time={} #preallocate
-    sfreq=raw.info['sfreq']
-    # seperate out stage 2
-    stages = annotations[annotations.Annotation.apply(stage_check)]
-    On = stages[::2];Off = stages[1::2]
-    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
-    if abs(np.diff(stage_on_off[0]) - 30) < 2:
-        pass
-    else:
-        On = stages[1::2];Off = stages[::2]
-        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
-
-    for ii, names in enumerate(channelList):
-
-        peak_time[names]=[]
-        segment,_ = raw[ii,:]
-        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
-        mph = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
-        mpl = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
-        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
-
-        up = np.where(np.diff(pass_.astype(int))>0)
-        down = np.where(np.diff(pass_.astype(int))<0)
-        up = up[0]
-        down = down[0]
-        ###############################
-        #print(down[0],up[0])
-        if down[0] < up[0]:
-            down = down[1:]
-        #print(down[0],up[0])
-        #############################
-        if (up.shape > down.shape) or (up.shape < down.shape):
-            size = np.min([up.shape,down.shape])
-            up = up[:size]
-            down = down[:size]
-        C = np.vstack((up,down))
-        for pairs in C.T:
-            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
-                #TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
-                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
-                if np.max(SegmentForPeakSearching) < mpl:
-                    temp_temp_time = time[pairs[0]:pairs[1]]
-                    ints_temp = np.argmax(SegmentForPeakSearching)
-                    peak_time[names].append(temp_temp_time[ints_temp])
-                    
-        
-
-    peak_time['mean']=[];peak_at=[];duration=[]
-    RMS_mean=hmean(RMS)
-    
-    mph = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + threshold * RMS_mean.std()
-    mpl = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + nn * RMS_mean.std()
-    pass_ =RMS_mean > mph
-    up = np.where(np.diff(pass_.astype(int))>0)
-    down= np.where(np.diff(pass_.astype(int))<0)
-    up = up[0]
-    down = down[0]
-    ###############################
-    #print(down[0],up[0])
-    if down[0] < up[0]:
-        down = down[1:]
-    #print(down[0],up[0])
-    #############################
-    if (up.shape > down.shape) or (up.shape < down.shape):
-        size = np.min([up.shape,down.shape])
-        up = up[:size]
-        down = down[:size]
-    C = np.vstack((up,down))
-    for pairs in C.T:
-        
-        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
-            #TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
-            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
-            if np.max(SegmentForPeakSearching)< mpl:
-                temp_time = time[pairs[0]:pairs[1]]
-                ints_temp = np.argmax(SegmentForPeakSearching)
-                peak_time['mean'].append(temp_time[ints_temp])
-                peak_at.append(SegmentForPeakSearching[ints_temp])
-                duration_temp = time[pairs[1]] - time[pairs[0]]
-                duration.append(duration_temp)
-    
-
-
-    time_find=[];mean_peak_power=[];Duration=[]
-    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
-        temp_timePoint=[]
-        for ii, names in enumerate(channelList):
-            try:
-                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
-            except:
-                temp_timePoint.append(item + 2)
-        try:
-            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
-                time_find.append(float(item))
-                mean_peak_power.append(PEAK)
-                Duration.append(duration_time)
-        except:
-            pass
-    temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
-    for single_time_find, single_mean_peak_power, single_duration in zip(time_find,mean_peak_power,Duration):
-        for on_time,off_time in stage_on_off:
-            if intervalCheck([on_time,off_time],single_time_find,tol=tol):
-                temp_time_find.append(single_time_find)
-                temp_mean_peak_power.append(single_mean_peak_power)
-                temp_duration.append(single_duration)
-    time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
-    return time_find,mean_peak_power,Duration,peak_time,peak_at
+#def spindle_validation_step1(raw,channelList,moving_window_size=200,
+#                             threshold=.9,syn_channels=3,l_freq=0,h_freq=200,
+#                             l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,front=300,
+#                             back=100):
+#    """repetition of FBT function, no longer used"""
+#    nn=higher_threshold
+#    
+#    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+#    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+#    peak_time={} #preallocate
+#    sfreq=raw.info['sfreq']
+#    for ii, names in enumerate(channelList):
+#
+#        peak_time[names]=[]
+#        segment,_ = raw[ii,:]
+#        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+#        mph = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+#        mpl = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+#        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
+#
+#        up = np.where(np.diff(pass_.astype(int))>0)
+#        down = np.where(np.diff(pass_.astype(int))<0)
+#        up = up[0]
+#        down = down[0]
+#        ###############################
+#        #print(down[0],up[0])
+#        if down[0] < up[0]:
+#            down = down[1:]
+#        #print(down[0],up[0])
+#        #############################
+#        if (up.shape > down.shape) or (up.shape < down.shape):
+#            size = np.min([up.shape,down.shape])
+#            up = up[:size]
+#            down = down[:size]
+#        C = np.vstack((up,down))
+#        for pairs in C.T:
+#            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+#                #TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+#                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+#                if np.max(SegmentForPeakSearching) < mpl:
+#                    temp_temp_time = time[pairs[0]:pairs[1]]
+#                    ints_temp = np.argmax(SegmentForPeakSearching)
+#                    peak_time[names].append(temp_temp_time[ints_temp])
+#                    
+#        
+#
+#    peak_time['mean']=[];peak_at=[];duration=[]
+#    RMS_mean=hmean(RMS)
+#    
+#    mph = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + threshold * RMS_mean.std()
+#    mpl = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + nn * RMS_mean.std()
+#    pass_ =RMS_mean > mph
+#    up = np.where(np.diff(pass_.astype(int))>0)
+#    down= np.where(np.diff(pass_.astype(int))<0)
+#    up = up[0]
+#    down = down[0]
+#    ###############################
+#    #print(down[0],up[0])
+#    if down[0] < up[0]:
+#        down = down[1:]
+#    #print(down[0],up[0])
+#    #############################
+#    if (up.shape > down.shape) or (up.shape < down.shape):
+#        size = np.min([up.shape,down.shape])
+#        up = up[:size]
+#        down = down[:size]
+#    C = np.vstack((up,down))
+#    for pairs in C.T:
+#        
+#        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+#            #TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
+#            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+#            if np.max(SegmentForPeakSearching)< mpl:
+#                temp_time = time[pairs[0]:pairs[1]]
+#                ints_temp = np.argmax(SegmentForPeakSearching)
+#                peak_time['mean'].append(temp_time[ints_temp])
+#                peak_at.append(SegmentForPeakSearching[ints_temp])
+#                duration_temp = time[pairs[1]] - time[pairs[0]]
+#                duration.append(duration_temp)
+#    
+#
+#
+#    time_find=[];mean_peak_power=[];Duration=[]
+#    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+#        temp_timePoint=[]
+#        for ii, names in enumerate(channelList):
+#            try:
+#                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+#            except:
+#                temp_timePoint.append(item + 2)
+#        try:
+#            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
+#                time_find.append(float(item))
+#                mean_peak_power.append(PEAK)
+#                Duration.append(duration_time)
+#        except:
+#            pass
+#    
+#        
+#    return time_find,mean_peak_power,Duration,peak_time,peak_at
+#def spindle_validation_with_sleep_stage(raw,channelList,annotations,moving_window_size=200,threshold=.9,
+#                                        syn_channels=3,l_freq=0,h_freq=200,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
+#                                        front=300,back=100):
+#    """repetition, just add sleep stage argument"""
+#    nn=higher_threshold
+#    time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
+#    RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
+#    peak_time={} #preallocate
+#    sfreq=raw.info['sfreq']
+#    # seperate out stage 2
+#    stages = annotations[annotations.Annotation.apply(stage_check)]
+#    On = stages[::2];Off = stages[1::2]
+#    stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
+#    if abs(np.diff(stage_on_off[0]) - 30) < 2:
+#        pass
+#    else:
+#        On = stages[1::2];Off = stages[::2]
+#        stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+#
+#    for ii, names in enumerate(channelList):
+#
+#        peak_time[names]=[]
+#        segment,_ = raw[ii,:]
+#        RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of 200ms
+#        mph = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + threshold * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
+#        mpl = trim_mean(RMS[ii,int(front*sfreq):-int(back*sfreq)],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
+#        pass_ = RMS[ii,:] > mph#should be greater than then mean not the threshold to compute duration
+#
+#        up = np.where(np.diff(pass_.astype(int))>0)
+#        down = np.where(np.diff(pass_.astype(int))<0)
+#        up = up[0]
+#        down = down[0]
+#        ###############################
+#        #print(down[0],up[0])
+#        if down[0] < up[0]:
+#            down = down[1:]
+#        #print(down[0],up[0])
+#        #############################
+#        if (up.shape > down.shape) or (up.shape < down.shape):
+#            size = np.min([up.shape,down.shape])
+#            up = up[:size]
+#            down = down[:size]
+#        C = np.vstack((up,down))
+#        for pairs in C.T:
+#            if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+#                #TimePoint = np.mean([time[pairs[1]],time[pairs[0]]])
+#                SegmentForPeakSearching = RMS[ii,pairs[0]:pairs[1]]
+#                if np.max(SegmentForPeakSearching) < mpl:
+#                    temp_temp_time = time[pairs[0]:pairs[1]]
+#                    ints_temp = np.argmax(SegmentForPeakSearching)
+#                    peak_time[names].append(temp_temp_time[ints_temp])
+#                    
+#        
+#
+#    peak_time['mean']=[];peak_at=[];duration=[]
+#    RMS_mean=hmean(RMS)
+#    
+#    mph = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + threshold * RMS_mean.std()
+#    mpl = trim_mean(RMS_mean[int(front*sfreq):-int(back*sfreq)],0.05) + nn * RMS_mean.std()
+#    pass_ =RMS_mean > mph
+#    up = np.where(np.diff(pass_.astype(int))>0)
+#    down= np.where(np.diff(pass_.astype(int))<0)
+#    up = up[0]
+#    down = down[0]
+#    ###############################
+#    #print(down[0],up[0])
+#    if down[0] < up[0]:
+#        down = down[1:]
+#    #print(down[0],up[0])
+#    #############################
+#    if (up.shape > down.shape) or (up.shape < down.shape):
+#        size = np.min([up.shape,down.shape])
+#        up = up[:size]
+#        down = down[:size]
+#    C = np.vstack((up,down))
+#    for pairs in C.T:
+#        
+#        if l_bound < (time[pairs[1]] - time[pairs[0]]) < h_bound:
+#            #TimePoint = np.mean([time[pairs[1]] , time[pairs[0]]])
+#            SegmentForPeakSearching = RMS_mean[pairs[0]:pairs[1],]
+#            if np.max(SegmentForPeakSearching)< mpl:
+#                temp_time = time[pairs[0]:pairs[1]]
+#                ints_temp = np.argmax(SegmentForPeakSearching)
+#                peak_time['mean'].append(temp_time[ints_temp])
+#                peak_at.append(SegmentForPeakSearching[ints_temp])
+#                duration_temp = time[pairs[1]] - time[pairs[0]]
+#                duration.append(duration_temp)
+#    
+#
+#
+#    time_find=[];mean_peak_power=[];Duration=[]
+#    for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
+#        temp_timePoint=[]
+#        for ii, names in enumerate(channelList):
+#            try:
+#                temp_timePoint.append(min(enumerate(peak_time[names]), key=lambda x: abs(x[1]-item))[1])
+#            except:
+#                temp_timePoint.append(item + 2)
+#        try:
+#            if np.sum((abs(np.array(temp_timePoint) - item)<tol).astype(int))>=syn_channels:
+#                time_find.append(float(item))
+#                mean_peak_power.append(PEAK)
+#                Duration.append(duration_time)
+#        except:
+#            pass
+#    temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
+#    for single_time_find, single_mean_peak_power, single_duration in zip(time_find,mean_peak_power,Duration):
+#        for on_time,off_time in stage_on_off:
+#            if intervalCheck([on_time,off_time],single_time_find,tol=tol):
+#                temp_time_find.append(single_time_find)
+#                temp_mean_peak_power.append(single_mean_peak_power)
+#                temp_duration.append(single_duration)
+#    time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
+#    return time_find,mean_peak_power,Duration,peak_time,peak_at
 def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
                                                                 file_to_read,annotations,
                                                                 moving_window_size=200,
@@ -1242,6 +1356,7 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
                                                                 syn_channels=3,
                                                                 l_freq=0,h_freq=200,
                                                                 l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5):
+    """implement wavelet tranform as one of the steps of the processing steps"""
     nn=higher_threshold
     
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
@@ -1359,13 +1474,41 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                                         syn_channels=3.4,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
                                         front=300,back=100,sleep_stage=True,proba=False,validation_windowsize=3,l_freq=11,h_freq=16):
     
+    """One of the core functions
+    raw: data after preprocessing
+    channelList: channel list of interest, and in this study we use       'F3','F4','C3','C4','O1','O2'
+    annotations: pandas DataFrame object containing manual annotations, such as sleep stages, spindle locations.
+    moving_window_size: size of the moving window for convolved root mean square computation. It should work better when it is the sampling frequency, which, in this case is 500 (we downsample subjects with 1000 Hz sampling rate). 
+    lower_threshold: highpass threshold for spindle detection: decision making = trimmed_mean + lower_T * trimmed_std
+    higher_threshold: lowpass threshold for spindle detection: decision making = trimmed_mean + higher_T * trimmed_std
+    syn_channels: criteria for selecting spindles: at least # of channels have spindle instance and also in the mean channel
+    l_bound: low boundary for duration of a spindle instance
+    h_bound: high boundary for duration of a spindle instance
+    tol : tolerance for determing spindles (criteria in time)
+    front : First few seconds of recordings that we are not interested because there might be artifacts, or it is confirmed subjects could not fall asleep within such a short period
+    back : last few seconds of recordings that we are not interested due to the recording procedures
     
+    returns:
+        time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label
+    
+    time_find: onset of spindles. Marked at the peak of the spindle
+    mean_peak_power: mean of the peaks of the RMS, not the signal peaks
+    Duration: duration of spindles. Marked at each spindle found
+    mph: lower threshold
+    mpl: higher threshold
+    auto_proba: probabilities of whether segmented data contain spindle signals. Provided by a fit logistic
+        regression classifier
+    auto_label: binary labels (predicted labels) of the segmented data. 1 means the segmented data contains
+         spindle signals, else it does not.
+        
+    """
     time=np.linspace(0,raw.last_samp/raw.info['sfreq'],raw._data[0,:].shape[0])
     RMS = np.zeros((len(channelList),raw._data[0,:].shape[0]))
     peak_time={} #preallocate
     sfreq=raw.info['sfreq']
     mph,mpl = {},{}
-
+    #########################################################################################################
+    ########################### compute the RMSs of the individual channels ###################
     for ii, names in enumerate(channelList):
 
         peak_time[names]=[]
@@ -1397,9 +1540,11 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                     temp_temp_time = time[pairs[0]:pairs[1]]
                     ints_temp = np.argmax(SegmentForPeakSearching)
                     peak_time[names].append(temp_temp_time[ints_temp])
-                    
+    ########################## finish individual channels #############################################
+    ####################################################################################################                
         
-
+    ######################################################################################################
+    ################## compute mean of RMSs of the individual channels ######################
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     
@@ -1433,7 +1578,14 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                 duration_temp = time[pairs[1]] - time[pairs[0]]
                 duration.append(duration_temp) 
             
-        
+    ###################### finish mean RMS ################################################
+    #######################################################################################
+    
+    ##########################################################################################
+    ###################### for each found spindle in the mean RMS, compare them to individual
+    ###################### channels. If 3 or more channels found spindles at the similar 
+    ###################### time, we say at the found time in the mean RMS, we have a spindle
+    ###################### a spindle will be marked at the peak of the mean RMS
     time_find=[];mean_peak_power=[];Duration=[];
     for item,PEAK,duration_time in zip(peak_time['mean'],peak_at,duration):
         temp_timePoint=[]
@@ -1449,7 +1601,7 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                 Duration.append(duration_time)
         except:
             pass
-    if sleep_stage:
+    if sleep_stage:# exclude those are not in the sleep stage 2
         try:
             temp_time_find=[];temp_mean_peak_power=[];temp_duration=[];
             # seperate out stage 2
@@ -1471,7 +1623,15 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
         except:
             print('stage 2 missing')
     
-    
+    ################################################################################################
+    #################### this is optional 
+    #################### we make 3 kinds of features: local RMS thresholding, dominant power spectral density
+    #################### and dominant frequency
+    #################### the features are extracted on segmented signals (some seconds long and Hamming windowed)
+    #################### features are mean centerd and unit standard, fit to a logistic regression classifier
+    #################### labels are made based only on the onsets and durations we found in the previous step,
+    #################### no information from the manually scores is used!!!!!!!!!!!!!!!!!!!!!!!!!!
+    #################### the probabilities of whether segmented data contain spindle signals
     decision_features=None;auto_proba=None;auto_label=None
     if proba:
         result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
@@ -1498,12 +1658,23 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
         psds = 10* np.log10(psds)
         features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
         decision_features = StandardScaler().fit_transform(features.values,auto_label)
-        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-7,max_iter=int(1e7))
+        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-4,max_iter=int(1e7))
         clf.fit(decision_features,auto_label)
         auto_proba=clf.predict_proba(decision_features)[:,-1]
             
     return time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label
 def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_fix=True):
+    """One of the core functions
+    
+    time_interval: [start time, end time]
+    spindle: if spindle_duration_fix is true, this argument is one of the manually marked onsets of the spindles
+    spindle_duration: defined spindle duration for manually marked spindles:: 2 seconds
+    spindle_duration_fix: if true, meaning we are passing manually scored spindles, else, we are passing
+                        automatically scored spindles
+                        
+    Returns True if the spindle represeted by the spindle onset is overlap the time interval
+    Returns False if not
+    """
     if spindle_duration_fix:
         spindle_start = spindle - 0.5
         spindle_end   = spindle + 1.5
@@ -1522,19 +1693,45 @@ def spindle_comparison(time_interval,spindle,spindle_duration,spindle_duration_f
                            (intervalCheck(time_interval,spindle_end)))
         return a
 def discritized_onset_label_manual(raw,df,spindle_segment,front=300,back=100):
+    """One of the core functions
+    raw: raw data object, loaded by MNE python
+    df: data frame contains manually scored spindle annotations
+    spindle_segment: the length of sliding window used for segment the data
+    front: first few seconds of signal cut off from the analysis
+    back: last few seconds of the signal cut off from the analysis
+    
+    returns a list of [0 1] labels. 1 means the segment overlaps a manually marked spindle
+                                    0 means not
+    """
+    # 1-D vector of start times of the sliding non-overlapping window
     discritized_continuous_time = np.arange(front,raw.times[-1]-back,step=spindle_segment)
+    # the next start time of the sliding window is the end time of the previous one
+    # stack them together, and we will get a 2-D matrix where each row is a time interval
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
+    # transpose
     discritized_time_intervals = np.array(discritized_time_intervals).T
+    # preallocation
     discritized_time_to_zero_one_labels = np.zeros(len(discritized_time_intervals))
-    temp=[]
+    temp=[] # sanity check
     for jj,(time_interval_1,time_interval_2) in enumerate(discritized_time_intervals):
-        time_interval = [time_interval_1,time_interval_2]
+        time_interval = [time_interval_1,time_interval_2]# redundant line
         for spindle in df['Onset']:
             temp.append([time_interval,spindle])
             if spindle_comparison(time_interval,spindle,spindle_segment):# if the time interval overlaps a spindle (any spindle), with assuming the spindle is 2 seconds long
                 discritized_time_to_zero_one_labels[jj] = 1
     return discritized_time_to_zero_one_labels,temp
 def discritized_onset_label_auto(raw,df,spindle_segment,front=300,back=100):
+    """One of the core functions
+    
+    raw: raw data object
+    df: data frame contains auto-marked spindle information: onsets, durations, peaks
+    spindle_segment: window size. Unit: seconds
+    front: see above
+    back: see above
+    
+    returns a list of [0 1] labels. 1 means the segment overlaps a automatically marked spindle
+                                    0 means not
+    """
     spindle_duration = df['Duration'].values
     discritized_continuous_time = np.arange(front,raw.times[-1]-back,step=spindle_segment)
     discritized_time_intervals = np.vstack((discritized_continuous_time[:-1],discritized_continuous_time[1:]))
@@ -1548,6 +1745,10 @@ def discritized_onset_label_auto(raw,df,spindle_segment,front=300,back=100):
     return discritized_time_to_zero_one_labels,discritized_time_intervals
 
 def read_annotation(raw, annotation_file,front=300,back=100):
+    """One of the core functions
+    
+    
+    """
     #annotation_file = [files for files in file_in_fold if('txt' in files) and (file_to_read.split('_')[0] in files) and (file_to_read.split('_')[1] in files)]
     manual_spindle = pd.read_csv(annotation_file[0])
     manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
