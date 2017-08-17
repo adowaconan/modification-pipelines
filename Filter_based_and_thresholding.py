@@ -276,16 +276,16 @@ class Filter_based_and_thresholding:
         
         result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})
         
-        data = epochs.get_data()
-        full_prop = [[psuedo_rms(lower_threshold,higher_threshold,d[ii,:]) for ii,name in enumerate(channelList)] for d in data]
-        
-        features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
+#        data = epochs.get_data()
+#        full_prop = [[psuedo_rms(lower_threshold,higher_threshold,d[ii,:]) for ii,name in enumerate(channelList)] for d in data]
+#        
+#        features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
         
         
         auto_label,_ = discritized_onset_label_auto(epochs,raw,result,
                                                  validation_windowsize)
         self.auto_labels = auto_label
-        self.decision_features = features
+#        self.decision_features = features
         
     def fit(self,proba_exclude=False,proba_threshold=0.5,n_jobs=1):
         from sklearn.linear_model import LogisticRegressionCV
@@ -323,7 +323,7 @@ class Filter_based_and_thresholding:
         self.auto_labels = auto_labels
         #self.auto_proba = auto_proba
         
-    def mauanl_label(self):
+    def make_manuanl_label(self):
         raw = self.raw
         epochs = self.epochs
         annotations = self.annotation
@@ -352,8 +352,9 @@ if __name__ == "__main__":
         lower_threshold,higher_threshold = params
         a.find_onset_duration(lower_threshold,higher_threshold)
         a.sleep_stage_check()
-        a.fit_predict_proba()
-        a.mauanl_label()
+        a.prepare_validation()
+        a.make_manuanl_label()
+        a.fit()
         return metrics.roc_auc_score(a.manual_labels,a.auto_proba)
     lower = np.arange(0.1,1.1,0.1)
     higher = np.arange(2.5,3.6,0.1)

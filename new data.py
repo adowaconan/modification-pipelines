@@ -183,6 +183,43 @@ for raw_fif in fif_files:
     raws.append(a)
 crossvalidation={'low':[],'high':[],'AUC':[]}
 import time
+import itertools
+
+for coms in itertools.combinations(zip(raws,spindle_files,hypno_files),6):
+    train_ = coms
+    test_ = list(set(raws) - set(coms))
+    temp_df = {'low':[],'high':[],'AUC':[],'sub':[]}
+    for raw,spindle_file,hypno_file in train_:
+        for low in np.arange(0.1,1.1,0.1):
+            for high in np.arange(2.,2.6,0.1):
+                t1=time.time()
+                result,auc_,auto,manual,times,auto_proba=new_data_pipeline(raw,spindle_file,
+                                                 hypno_file,moving_window_size=100,
+                                                lower_threshold=low,
+                                                 higher_threshold=high)
+                
+                t2=time.time()
+                print(t2-t1)
+                temp_df['low'].append(low)
+                temp_df['high'].append(high)
+                temp_df['AUC'].append(auc_)
+    temp_df = pd.DataFrame(temp_df)
+    best_low_, best_high_ = temp_df.iloc[np.argmax(temp_df['AUC'].values)][['low','high']]
+    for raw,spindle_file,hypno_file in test_:
+        t1=time.time()
+        result,auc_,auto,manual,times,auto_proba=new_data_pipeline(raw,spindle_file,
+                                         hypno_file,moving_window_size=100,
+                                        lower_threshold=low,
+                                         higher_threshold=high)
+        
+        t2=time.time()
+        print(t2-t1)
+        crossvalidation['low'].append(best_low_)
+        crossvalidation['high'].append(best_high_)
+        crossvalidation['AUC'].append(auc_)
+        crossvalidation['sub'].append(spindle_file.split('_')[-1][:-4])
+crossvalidation = pd.DataFrame(crossvalidation)  
+      
 for aa in range(10):
     all_ = {}
     for low in np.arange(0.1,.9,0.1):
@@ -354,11 +391,14 @@ for raw_fif in fif_files[:-2]:
     a=mne.io.read_raw_fif(raw_fif,preload=True)
     a.filter(11,16)
     raws.append(a)
-all_detection={};all_ML = {};all_expert2={};all_automate={}
+all_detection={};all_ML = {};all_expert2={};all_automate={};all_detection_alter={}
+mr_detection={};mr_ML = {};mr_expert2={};mr_automate={};mr_detection_alter={}
 from sklearn import metrics
 from collections import Counter
 from sklearn.model_selection import train_test_split
+import time
 for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_files,hypno_files,expert2_files,automate_files):
+    t0 = time.time()
     result,_,auto_labels,manual_labels,discritized_times_intervals,auto_proba = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
                                    lower_threshold=best_low,higher_threshold=best_high)
     temp_auc = [];fp=[];tp=[];confM=[];sensitivity=[];specificity=[]
@@ -380,13 +420,36 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
         print(Counter(truth))
         print(metrics.classification_report(truth,detected))
         print('confusion matrix\n',confM_temp)
-#        fpr,tpr,_ = roc_curve(truth,detected)
-#        fp.append(fpr);tp.append(tpr)
-    
-    
-
+    mr_detection[raw.filenames[0].split('\\')[-1][:-8]] = time.time() - t0
     all_detection[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp,confM,sensitivity,specificity]
-
+    
+    t0 = time.time()
+    result,_,auto_labels,manual_labels,discritized_times_intervals,auto_proba = new_data_pipeline(raw,spindle_file,hypno_file,moving_window_size=100,
+                                   lower_threshold=best_low,higher_threshold=best_high)
+    temp_auc = [];fp=[];tp=[];confM=[];sensitivity=[];specificity=[]
+    if len(auto_proba) > len(manual_labels):
+        auto_proba=auto_proba[:-1]
+    for train, test in cv.split(manual_labels):
+        detected,truth,detected_prob = auto_labels[train],manual_labels[train],auto_proba[train]
+        ratio = list(Counter(detected).values())[1]/(list(Counter(detected).values())[0]+list(Counter(detected).values())[1])
+        temp_auc.append(roc_auc_score(truth,detected_prob))
+        confM_temp = metrics.confusion_matrix(truth,detected_prob>ratio)
+        TN,FP,FN,TP = confM_temp.flatten()
+        sensitivity_ = TP / (TP+FN)
+        specificity_ = TN / (TN + FP)
+        confM_temp = confM_temp/ confM_temp.sum(axis=1)[:, np.newaxis]
+        confM.append(confM_temp.flatten())
+        sensitivity.append(sensitivity_)
+        specificity.append(specificity_)
+        fp_,tp_,_ = roc_curve(truth, detected_prob)
+        fp.append(fp_);tp.append(tp_)
+        print(Counter(truth))
+        print(metrics.classification_report(truth,detected>ratio))
+        print('confusion matrix\n',confM_temp)
+    mr_detection_alter[raw.filenames[0].split('\\')[-1][:-8]]=time.time() - t0
+    all_detection_alter[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc,fp,tp,confM,sensitivity,specificity]
+    
+    t0 = time.time()
     events = mne.make_fixed_length_events(raw,id=1,duration=3)
     epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
     psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
@@ -434,6 +497,7 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
             print(Counter(labels[train]))
             print(metrics.classification_report(labels[test],exported_pipeline.predict(data[test])))
             print('ML,confusion matrix\n',confM_temp)
+        mr_ML[raw.filenames[0].split('\\')[-1][:-8]]= time.time() - t0
         all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr,confM,sensitivity,specificity]
     else:
         from imblearn.combine import SMOTEENN
@@ -472,8 +536,10 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
             print(Counter(labels_[train]))
             print(metrics.classification_report(labels_[test],exported_pipeline.predict(data_[test])))
             print('ML,confusion matrix\n',confM_temp)
+        
         all_ML[raw.filenames[0].split('\\')[-1][:-8]]=[AUC,fpr,tpr,confM,sensitivity,specificity] 
-
+    
+    t0 = time.time()
     expert2_spindle = np.loadtxt(expert2_file,skiprows=1)
     expert2_spindle = pd.DataFrame({'Onset':expert2_spindle[:,0],'Duration':expert2_spindle[:,1]})
     expert2_labels,_ = discritized_onset_label_manual(raw,expert2_spindle,3)
@@ -494,9 +560,10 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
         print(Counter(truth))
         print(metrics.classification_report(truth,detected))
         print('confusion matrix\n',confM_temp)
+    mr_expert2[raw.filenames[0].split('\\')[-1][:-8]]=time.time() - t0
     all_expert2[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc_,fp_,tp_,confM,sensitivity,specificity]
 
-
+    t0 = time.time()
     automate_spindle = np.loadtxt(auto_file,skiprows=1)
     automate_spindle = pd.DataFrame({'Onset':automate_spindle[:,0],'Duration':automate_spindle[:,1]})
     automate_labes, _ = discritized_onset_label_manual(raw,automate_spindle,3)
@@ -518,12 +585,15 @@ for raw,spindle_file,hypno_file,expert2_file, auto_file in zip(raws,spindle_file
         print(Counter(truth))
         print(metrics.classification_report(truth,detected))
         print('confusion matrix\n',confM_temp)
+    mr_automate[raw.filenames[0].split('\\')[-1][:-8]] = time.time() - t0
     all_automate[raw.filenames[0].split('\\')[-1][:-8]]=[temp_auc__, fp__, tp__,confM,sensitivity,specificity]
-all_result = [all_detection,all_ML,all_expert2,all_automate]  
+all_result = [all_detection,all_ML,all_expert2,all_automate,all_detection_alter]  
+run_time = [mr_detection,mr_ML,mr_expert2,mr_automate,mr_detection_alter]
+pickle.dump(run_time,open('running time.p','wb'))
 pickle.dump(all_result,open('all cv results.p','wb'))  
 import pickle
 all_result = pickle.load(open('all cv results.p','rb'))
-all_detection,all_ML,all_expert2,all_automate=all_result
+all_detection,all_ML,all_expert2,all_automate,all_detection_alter=all_result
 def parse_data(all_dict, model='FBT'):
     df_ ={'Subject':[],
               'Mean TN':[],
@@ -589,7 +659,7 @@ ax.axvline(xx.mean(),color='blue',ymax=len(ylabel)/(len(ylabel)+uv),
            )
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='blue',label='FBT average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()))
+            alpha=0.3,color='blue',label='FBT average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()/np.sqrt(len(xx))))
 sortylabel = [ylabel[ii][-1] for ii in sortIdx ]
 _=ax.set(ylim=(-0.5,len(ylabel)+uv),)
 plt.xticks(fontsize=16)
@@ -613,7 +683,7 @@ ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
            color='red')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='red',label='Machine learning average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
+            alpha=0.3,color='red',label='Machine learning average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()/np.sqrt(len(xx))),)
 
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_expert2.items():
@@ -631,7 +701,7 @@ ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
            color='green')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='green',label='expert 2 average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
+            alpha=0.3,color='green',label='expert 2 average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()/np.sqrt(len(xx))),)
 
 xx,yy,xerr,ylabel = [],[],[],[];cnt = 0
 for keys, (item,fpr,tpr,confM,sensitivity,specificity) in all_automate.items():
@@ -649,10 +719,10 @@ ax.axvline(xx.mean(),ymax=len(ylabel)/(len(ylabel)+uv),
            color='black')
 ax.axvspan(xx.mean()-xx.std()/np.sqrt(len(xx)),
            xx.mean()+xx.std()/np.sqrt(len(xx)),ymax=len(ylabel)/(len(ylabel)+uv),
-            alpha=0.3,color='black',label='Devuyst et al., 2010 average: %.3f $\pm$ %.3f'%(xx.mean(),xx.std()),)
+            alpha=0.3,color='black',label='Devuyst et al., 2010 average: %.2f $\pm$ %.2f'%(xx.mean(),xx.std()/np.sqrt(len(xx))),)
 
 #ldg=ax.legend(bbox_to_anchor=(1.5, 0.8))
-lgd =ax.legend(loc='upper left',prop={'size':15},frameon=False,scatterpoints=1)
+lgd =ax.legend(loc='upper left',prop={'size':17},frameon=False,scatterpoints=1)
 frame = lgd.get_frame()
 frame.set_facecolor('None')
 ######################  machine learning model #########################################
@@ -679,7 +749,7 @@ for ii, (keys, values) in enumerate(all_ML.items()):
         ax_ML.plot(base_fpr, mean_tprs,
                    label='Most median sample\nsubject %s,\nAUC: %.2f $\pm$ %.2f'%(keys[-1],
                                                                                   np.mean(AUC),
-                                                                                  np.std(AUC)),
+                                                                                  np.std(AUC)/np.sqrt(len(AUC))),
                 color='black',alpha=1)
         ax_ML.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3,
                            label='Standard error')
@@ -723,7 +793,7 @@ for ii, (keys, values) in enumerate(all_detection.items()):
         ax_signal.plot(base_fpr, mean_tprs,
                    label='Most median sample\nsubject %s,\nAUC: %.2f $\pm$ %.2f'%(keys[-1],
                                                                                   np.mean(AUC),
-                                                                                  np.std(AUC)),
+                                                                                  np.std(AUC)/np.sqrt(len(AUC))),
                 color='black',alpha=1)
         ax_signal.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3,
                            label='Standard error')
@@ -768,7 +838,7 @@ for ii, (keys, values) in enumerate(all_expert2.items()):
         ax_expert2.plot(base_fpr, mean_tprs,
                    label='Most median sample\nsubject %s,\nAUC: %.2f $\pm$ %.2f'%(keys[-1],
                                                                                   np.mean(AUC),
-                                                                                  np.std(AUC)),
+                                                                                  np.std(AUC)/np.sqrt(len(AUC))),
                 color='black',alpha=1)
         ax_expert2.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3,)
 #                           label='Standard error')
@@ -812,7 +882,7 @@ for ii, (keys, values) in enumerate(all_automate.items()):
         ax_automate.plot(base_fpr, mean_tprs,
                    label='Most median sample\nsubject %s,\nAUC: %.2f $\pm$ %.2f'%(keys[-1],
                                                                                   np.mean(AUC),
-                                                                                  np.std(AUC)),
+                                                                                  np.std(AUC)/np.sqrt(len(AUC))),
                 color='black',alpha=1)
         ax_automate.fill_between(base_fpr, tprs_lower, tprs_upper, color='grey', alpha=0.3,)
 #                           label='Standard error')
@@ -836,12 +906,12 @@ plt.yticks(fontsize=16)
 ############################### 3rd column ###############################################
 confM_FBT_mean = np.array(confM_FBT).mean(1).mean(0)
 confM_ML_mean = np.array(confM_ML).mean(1).mean(0)
-confM_FBT_std = np.array(confM_FBT).mean(1).std(0)
-confM_ML_std = np.array(confM_ML).mean(1).std(0)
+confM_FBT_std = np.array(confM_FBT).mean(1).std(0)/np.sqrt(len(np.array(confM_FBT).mean(1)))
+confM_ML_std = np.array(confM_ML).mean(1).std(0)/np.sqrt(len(np.array(confM_ML).mean(1)))
 confM_expert2_mean = np.array(confM_expert2).mean(1).mean(0)
 confM_automate_mean = np.array(confM_automate).mean(1).mean(0)
-confM_expert2_std = np.array(confM_expert2).mean(1).std(0)
-confM_automate_std = np.array(confM_automate).mean(1).std(0)
+confM_expert2_std = np.array(confM_expert2).mean(1).std(0)/np.sqrt(len(np.array(confM_expert2).mean(1)))
+confM_automate_std = np.array(confM_automate).mean(1).std(0)/np.sqrt(len(np.array(confM_automate).mean(1)))
 
 ax_ML_CM = fig.add_subplot(433)
 ax_ML_CM=sns.heatmap(confM_ML_mean.reshape(2,2),cbar=False,cmap=plt.cm.Blues,

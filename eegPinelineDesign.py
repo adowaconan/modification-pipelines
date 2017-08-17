@@ -771,36 +771,7 @@ def EEGpipeline_by_epoch(file_to_read,validation_file,lowCut=10,highCut=18,
     spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
 
     return peak_time, result,spindles, match, mismatch
-def EEGpipeline_by_total(file_to_read,validation_file,lowCut=10,highCut=18,majority=3,mul=0.8):
-    channelList = ['F3','F4','C3','C4','O1','O2']
-    raw = load_data(file_to_read,lowCut,highCut,180)
-    raw.pick_channels(channelList)
-    print('finish loading data')
 
-    time = np.linspace(0,raw._data[0,:].shape[0]/1000,raw._data[0,:-1].shape[0])
-    RMS = np.zeros((6,raw._data[0,:].shape[0]))
-    peak_time={}
-    for ii, names in enumerate(channelList):
-
-        peak_time[names]=[]
-        dataSegment,temptime = raw[ii,:raw.last_samp]
-        peak_time[names],RMS[ii,:],time=RMS_calculation([temptime[0],temptime[-1]],dataSegment,mul)
-
-    peak_time['mean']=[]
-    RMS_mean=hmean(RMS)
-    RMS_mean = np.convolve(RMS_mean, 1000, 'same')# to smooth or to down sampling
-        #ax1.plot(time,RMS_mean,color='k',alpha=0.3)
-    #mph = RMS_mean.mean() + mul * RMS_mean.std()
-    pass_ = RMS_mean > RMS_mean.mean()
-    peak_time['mean']=RMS_pass(pass_,time,RMS_mean)
-
-    result = pd.DataFrame({'Onset':time_find})
-    result['Annotation']='spindle'
-    result = result[result.Onset > 30]
-    result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - 60)]
-    spindles, match, mismatch=validation(val_file=validation_file,result=result,tol=1)
-
-    return peak_time, result,spindles, match, mismatch
 
 def TS_analysis(raw,epch,picks,l_freq=8,h_freq=12):
     """returns power spectral density and frequency correspond to the power spectral"""
@@ -937,6 +908,7 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
         peak_time[names]=[]#preallocate empty list for storage
         segment,_ = raw[ii,:] # get data of one channel
         RMS[ii,:] = window_rms(segment[0,:],moving_window_size) # window of some samples
+        #I trimmed that std here but not at the mean RMS, what the hell????????
         mph = trim_mean(RMS[ii,100000:-30000],0.05) + mul * trimmed_std(RMS[ii,:],0.05) # higher sd = more strict criteria
         mpl = trim_mean(RMS[ii,100000:-30000],0.05) + nn * trimmed_std(RMS[ii,:],0.05)
         pass_ = RMS[ii,:] > mph
@@ -982,6 +954,10 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     peak_time['mean']=[];peak_at=[];duration=[]
     RMS_mean=hmean(RMS)
     ax1.plot(time,RMS_mean,color='k',alpha=0.3)
+    # here is the part I calculate the boundaries using the lower and higher thresholds
+    # I haven't use the trimmed standard deviation yet
+    # the next version, I will use the trimmed standard deviation witht he trimmed mean because it makes more sense
+    # that way
     mph = trim_mean(RMS_mean[100000:-30000],0.05) + mul * RMS_mean.std()
     mpl = trim_mean(RMS_mean[100000:-30000],0.05) + nn * RMS_mean.std()
     pass_ =RMS_mean > mph
@@ -1035,6 +1011,14 @@ def get_Onest_Amplitude_Duration_of_spindles(raw,channelList,file_to_read,moving
     return time_find,mean_peak_power,Duration,fig,ax,ax1,ax2,peak_time,peak_at
 
 def recode_annotation(x):
+    """recode the annotation strings to numerical values
+    
+    w: awake
+    1: stage 1
+    2: stage 2
+    3: stage 3
+    SWS: stage 3
+    """
     if re.compile(': w',re.IGNORECASE).search(x):
         return 0
     elif re.compile(':w',re.IGNORECASE).search(x):
@@ -1746,11 +1730,16 @@ def discritized_onset_label_auto(raw,df,spindle_segment,front=300,back=100):
 
 def read_annotation(raw, annotation_file,front=300,back=100):
     """One of the core functions
-    
+    The function reads annotation txt file and returns a dataframe containing all the onsets of different
+    events: sleep stages, k-complexes, spindles...
+    Taking the raw object to the function is to know where to put the 'cut-off' time: the first 300 and last 100 seconds
+    And then, only the spindle annotations are selected to form the dataframe of the gold standard
     
     """
-    #annotation_file = [files for files in file_in_fold if('txt' in files) and (file_to_read.split('_')[0] in files) and (file_to_read.split('_')[1] in files)]
-    manual_spindle = pd.read_csv(annotation_file[0])
+    try:# sometimes, I put the file name in list, so I shall take it out
+        manual_spindle = pd.read_csv(annotation_file[0])
+    except:
+        manual_spindle = pd.read_csv(annotation_file)
     manual_spindle = manual_spindle[manual_spindle.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
     manual_spindle = manual_spindle[manual_spindle.Onset > front] 
     keyword = re.compile('spindle',re.IGNORECASE)
@@ -1762,13 +1751,19 @@ def read_annotation(raw, annotation_file,front=300,back=100):
     gold_standard = pd.DataFrame(gold_standard) 
     return gold_standard 
 def stage_check(x):
+    """A simple function to chack if a string contains keyword '2'"""
     import re
     if re.compile('2',re.IGNORECASE).search(x):
         return True
     else:
         return False
 def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='miss',old=False):
-
+    """This function is used to be one of the core functions, and sample data in terms of its key
+    For example, if I want to sample the segments that are missed by the FBT model, the function will
+    perform a cross validation to sample them. 
+    
+    But, it is no longer used
+    """
     if old:
         if key == 'miss':
             
@@ -1962,23 +1957,48 @@ def sample_data(time_interval_1,time_interval_2,raw,raw_data,stage_on_off,key='m
 #                label.append(c)
 #    
 #    return samples,label
-def mark_stage_2_FA(discritized_time_intervals,stage_on_off,idx_FA):
-    t_idx=[]
-    for t1,t2 in discritized_time_intervals[idx_FA]:
-        a=[(t1 > np.array(stage_on_off)[:,0]).astype(int),(t2<np.array(stage_on_off)[:,1]).astype(int)]
-        a = np.array(a)
-        try:
-            t_idx.append(np.where(a.sum(0)==2)[0][0])
-        except:
-            pass
-    return np.unique(t_idx)
-def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritized_time_intervals,sample,label,front=300,back=100,):
-    idx_hit = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 1)))[0]
-    idx_CR  = np.where(np.logical_and((comparedRsult == 0),(manual_labels == 0)))[0]
-    idx_miss= np.where(comparedRsult == 1)[0]
-    idx_FA  = np.where(comparedRsult == -1)[0]
+#def mark_stage_2_FA(discritized_time_intervals,stage_on_off,idx_FA):
+#    """no longer used due to its lack of readable logic"""
+#    t_idx=[]
+#    for t1,t2 in discritized_time_intervals[idx_FA]:
+#        a=[(t1 > np.array(stage_on_off)[:,0]).astype(int),(t2<np.array(stage_on_off)[:,1]).astype(int)]
+#        a = np.array(a)
+#        try:
+#            t_idx.append(np.where(a.sum(0)==2)[0][0])
+#        except:
+#            pass
+#    return np.unique(t_idx)
+def sampling_FA_MISS_CR(comparedResult,manual_labels, raw, annotation, discritized_time_intervals,sample,label,front=300,back=100,):
+    """
+    One of the core functions
+    
+    Inputs:
+        comparedResult: a 1-D array computed by subtracting auto label vector from the manual label vector, element wise
+        manual_labels: a 1-D array, labeling segmented epochs based on manually scored annotations. 
+        raw: raw EEG object loaded using MNE python
+        annotation: dataframe contains the manually scored annotations
+        discritized_time_intervals: a 2-D array, each row represents time window we are going to look at in the loop
+        sample: a list. It is used to store processed features
+        label: a list. it is used to store labels. The labels are made only based on the true labels. Thus, false alarm 
+            and correct rejection are non-spindles (0), while hit and miss are spindles (1)
+        front, back: time in seconds we will cut from the original signal
+        
+        
+    Return:
+        sample: list of processed features
+        label: 0 or 1, indicating the classes of the sampled features
+    
+    """
+    """ for example: auto label = [1,0,1,0] and manual label = [1,1,0,0]
+                    comparedResult = [0,1,-1,0] --> hit, miss, false alarm, correc reject
+    """
+    idx_hit = np.where(np.logical_and((comparedResult == 0),(manual_labels == 1)))[0]
+    idx_CR  = np.where(np.logical_and((comparedResult == 0),(manual_labels == 0)))[0]
+    idx_miss= np.where(comparedResult == 1)[0]
+    idx_FA  = np.where(comparedResult == -1)[0]
     stages = annotation[annotation.Annotation.apply(stage_check)]
-
+    # time stamps of on and off of each stage 2 sleep
+    # the if-else was used because some of annotations were strange. Some of them have the onset of stage 2, but no off set
     On = stages[::2];Off = stages[1::2]
     stage_on_off = list(zip(On.Onset.values, Off.Onset.values))
     if abs(np.diff(stage_on_off[0]) - 30) < 2:
@@ -1986,32 +2006,37 @@ def sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, discritize
     else:
         On = stages[1::2];Off = stages[::2]
         stage_on_off = list(zip(On.Onset.values[1:], Off.Onset.values[2:]))
+    # importance: the stop time point is the end of signal subtracts the back cut off
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
-
+    # apply events to raw signal and segment the continuous data to 3-second long epochs
     epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
+    # compute the power spectral density and frequency 
     psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
     psds = 10* np.log10(psds)
     data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
     freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
+    # concatanate the signal features
     data = np.concatenate([data,psds,freqs],axis=2)
+    # for each segment, we vectorize the features
     data = data.reshape(len(events),-1)
+    # see how I only take the miss and FA cases?
     sample.append(data[idx_miss]);label.append(np.ones(len(idx_miss)))
     sample.append(data[idx_FA]);label.append(np.zeros(len(idx_FA)))
-    
+    # to make the spindle and non-spindle cases more balanced, we add some instances of the hit and/or correct rejection
     len_need = len(idx_FA) - len(idx_miss)
-    if len_need > 0:
+    if len_need > 0:# if we have more non spindles than spindles
         try:
             idx_hit_need = np.random.choice(idx_hit,size=len_need,replace=False)
         except:
             idx_hit_need = np.random.choice(idx_hit,size=len_need,replace=True)
         sample.append(data[idx_hit_need])
         label.append(np.ones(len(idx_hit_need)))
-    else:
+    else: # else if we have more spindles than non spindles
         idx_CR_nedd = np.random.choice(idx_CR,len_need,replace=False)
         sample.append(data[idx_CR_nedd])
         label.append(np.zeros(len(idx_CR_nedd)))
-    return sample,label
+    return sample,label# so the way I collect the data was to ignore subject or day
 
 def data_gathering_pipeline(temp_dictionary,
                             sampling,
@@ -2039,17 +2064,17 @@ def data_gathering_pipeline(temp_dictionary,
 #                                                                                                 higher_threshold=higher_threshold,
 #                                                                                                 )
         
-    elif do == 'without_stage':
-        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
-                                                                                     channelList,
-                                                                                     moving_window_size=windowSize,
-                                                                                     threshold=threshold,
-                                                                                     syn_channels=syn_channel,
-                                                                                     l_freq=l,
-                                                                                     h_freq=h,
-                                                                                     l_bound=0.5,
-                                                                                    h_bound=3.0,tol=1,
-                                                                                    higher_threshold=higher_threshold)
+#    elif do == 'without_stage':
+#        time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_step1(raw,
+#                                                                                     channelList,
+#                                                                                     moving_window_size=windowSize,
+#                                                                                     threshold=threshold,
+#                                                                                     syn_channels=syn_channel,
+#                                                                                     l_freq=l,
+#                                                                                     h_freq=h,
+#                                                                                     l_bound=0.5,
+#                                                                                    h_bound=3.0,tol=1,
+#                                                                                    higher_threshold=higher_threshold)
         
     elif do == 'wavelet':
         time_find,mean_peak_power,Duration,peak_time,peak_at=spindle_validation_with_sleep_stage_after_wavelet_transform(raw,
