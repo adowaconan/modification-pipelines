@@ -2046,6 +2046,10 @@ def data_gathering_pipeline(temp_dictionary,
                             threshold=0.6,syn_channel=3,
                             l=1,h=40,annotation=None,old=True,annotation_file=None,higher_threshold=1.,
                             front=300,back=100):
+    """
+    A wrapper for the data gathering pipeline.
+    Make use of other functions so I just get the results
+    """
     if do == 'with_stage':
         time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,
                                                                                                                     moving_window_size=windowSize,
@@ -2088,18 +2092,21 @@ def data_gathering_pipeline(temp_dictionary,
                                                                                                  h_bound=3.0,tol=1,
                                                                                                  higher_threshold=higher_threshold)
     
-    ###Taking out the first 100 seconds and the last 100 seconds###        
+    ###Taking out the first 100 seconds and the last 300 seconds###        
     result = pd.DataFrame({"Onset":time_find,"Amplitude":mean_peak_power,'Duration':Duration})
     result['Annotation'] = 'auto spindle'
     result = result[result.Onset < (raw.last_samp/raw.info['sfreq'] - back)]
     result = result[result.Onset > front]
 
 
-
+    # make gold standard data frame of annotations and take out the annotations before first 300 and after the last 100 seconds
     gold_standard = read_annotation(raw,annotation_file)
+    # make true labels based on gold standard annotation
     manual_labels = discritized_onset_label_manual(raw,gold_standard,3)
+    # make predicted labels based on predicted onest and durations of the FBT model
     auto_labels,discritized_time_intervals = discritized_onset_label_auto(raw,result,3)
     temp_dictionary[sub+day]=[manual_labels,auto_labels,discritized_time_intervals]
+    # sample the FM and miss cases
     comparedRsult = manual_labels - auto_labels
     sampling,labeling = sampling_FA_MISS_CR(comparedRsult,manual_labels, raw, annotation, 
                                             discritized_time_intervals,sampling,labeling,front=300,back=100,)
@@ -2110,6 +2117,19 @@ def data_gathering_pipeline(temp_dictionary,
 from sklearn import metrics
 from collections import Counter
 def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False):
+    """
+    Wrapper function for machine learning models to fit for individual EEG recording
+    
+    Raw: EEG raw object
+    exported_pipeline: scit-kit learn machine estimator or pipeline estimator
+    annotation_file: file name of the annotation file
+    cv: cross validation method
+    front: first # seconds of EEG recording being taken out
+    back: last # seconds of EEG recording being taken out
+    few: if a recording has too few true spindle, we fit the model with other data, and predict the spindle for this data
+        and cross validate locally
+    
+    """
     data=[];
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
@@ -2298,12 +2318,30 @@ def compute_two_thresholds(dictionary_data, label='without',plot_flag=False,n_fo
         return df_accuracy,df_confusion_matrix,df_fpr,df_tpr,df_AUC,threshold_list,result
         
 def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,lower_threshold,higher_threshold,syn_channel,l,h,annotation_file,cv=None,front=300,back=100,auc_threshold=0.5):
-    time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,moving_window_size=200,
+    time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label=thresholding_filterbased_spindle_searching(raw,channelList,annotation,moving_window_size=windowSize,
                                                                                                     lower_threshold=lower_threshold,
                                         syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=higher_threshold,
                                         front=300,back=100,sleep_stage=True,proba=True,validation_windowsize=3
                                         )
+    """
+    Wrapper function for the FBT model to cross validate with individual recording
     
+    raw: raw EEG recording object
+    channelList: channel of interest
+    annotation: data frame of spindle, sleep stage annotation
+    windowSize: covolution RMS computing window size
+    lower_threshold: lower threshold
+    higher_threshold: higher_threshold
+    syn_channel: # of channels should be agree with each other
+    l: low cutoff frequency
+    h: high cutoff frequncy
+    annotation_file: file name of the annotations, in .txt
+    cv: cross validation method
+    front:
+    back:
+    auc_threshold: decision making boundary
+    
+    """
 
     #anno = annotation[annotation.Annotation == 'spindle']['Onset']
     gold_standard = read_annotation(raw,annotation_file)
