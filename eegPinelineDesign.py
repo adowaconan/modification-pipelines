@@ -2395,7 +2395,7 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
         return temp_auc,fpr,tpr, confM, sensitivity, specificity
 from random import shuffle
 from scipy.stats import percentileofscore
-def Permutation_test(data1, data2, n1=100,n2=100):
+def Permutation_test_(data1, data2, n1=100,n2=100):
     p_values = []
     for simulation_time in range(n1):
         shuffle_difference =[]
@@ -2410,3 +2410,26 @@ def Permutation_test(data1, data2, n1=100,n2=100):
                             (100-percentileofscore(shuffle_difference,experiment_difference))/100))
     
     return p_values,np.mean(p_values),np.std(p_values)
+from sklearn.model_selection import permutation_test_score,StratifiedKFold
+def Permutation_test(data,n_permutations=100,n_=100):
+    p_vals = []
+    temp_df = {}
+    for ii,d in enumerate(data):
+        d = np.array(d)
+        temp_df[ii] = d
+        temp_df['label%d'%ii] = np.ones(d.shape) * ii
+        
+    vectorized_data = np.concatenate([temp_df[ii] for ii in range(data.shape[0])])
+    labels  = np.concatenate([temp_df['label%d'%ii] for ii in range(data.shape[0])])
+    idx = np.arange(vectorized_data.shape[0])
+    for iii in range(100):
+        shuffle(idx)
+    vectorized_data = vectorized_data[idx]
+    labels = labels[idx]
+    for simu in range(n_):
+        cv = StratifiedKFold(n_splits=5,shuffle=True,random_state=12345)
+        clf = LogisticRegressionCV(Cs=np.logspace(-4,4,9),random_state=12345)
+        score,permutation_scores,pval = permutation_test_score(clf,vectorized_data.reshape(-1,1),labels,cv=cv,
+                                                               n_permutations=n_permutations,random_state=12345)
+        p_vals.append(pval)
+    return score,p_vals,np.mean(p_vals),np.std(p_vals)
