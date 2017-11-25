@@ -11,6 +11,7 @@ import os
 import pandas as pd
 from utilities import *
 from sklearn import metrics
+from tqdm import tqdm
 
 class Filter_based_and_thresholding:
     """
@@ -99,8 +100,10 @@ class Filter_based_and_thresholding:
     
     def get_raw(self,raw):
         raw.load_data()
+        l_freq,h_freq=self.l_freq,self.h_freq
         raw.pick_channels(self.channelList)
-        raw.filter(self.l_freq,self.h_freq)
+        raw.info.normalize_proj()
+        raw.filter(l_freq,h_freq)
         back = self.back
         self.raw = raw
         sfreq = raw.info['sfreq']
@@ -125,6 +128,7 @@ class Filter_based_and_thresholding:
                                              duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,
                            preload=True)
+        epochs.resample(64)
         psds,freq = psd_multitaper(epochs,fmin=l_freq,
                                         fmax=h_freq,
                                         tmin=0,tmax=validation_windowsize,
@@ -146,6 +150,7 @@ class Filter_based_and_thresholding:
         h_bound = self.h_bound
         tol = self.tol
         syn_channels = self.syn_channels
+        
 
         sfreq=raw.info['sfreq']
         time=np.linspace(0,raw.last_samp/sfreq,raw.last_samp)
@@ -153,7 +158,7 @@ class Filter_based_and_thresholding:
         peak_time={} 
         mph,mpl = {},{}
         
-        for ii,names in enumerate(channelList):
+        for ii,names in tqdm(enumerate(channelList)):
             peak_time[names]=[]
             segment,_ = raw[ii,:]
             RMS[ii,:] = window_rms(segment[0,:],moving_window_size) 
@@ -276,33 +281,35 @@ class Filter_based_and_thresholding:
         
         result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})
         
-#        data = epochs.get_data()
-#        full_prop = [[psuedo_rms(lower_threshold,higher_threshold,d[ii,:]) for ii,name in enumerate(channelList)] for d in data]
-#        
-#        features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
+        data = epochs.get_data()
+        full_prop = [[psuedo_rms(lower_threshold,higher_threshold,d[ii,:]) for ii,name in enumerate(channelList)] for d in data]
+        
+        features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
         
         
         auto_label,_ = discritized_onset_label_auto(epochs,raw,result,
                                                  validation_windowsize)
         self.auto_labels = auto_label
-#        self.decision_features = features
+        self.decision_features = features
         
-    def fit(self,proba_exclude=False,proba_threshold=0.5,n_jobs=1):
+    def fit(self,proba_exclude=False,proba_threshold=0.5,n_jobs=1,cv=None,clf=None):
         from sklearn.linear_model import LogisticRegressionCV
         from sklearn.model_selection import cross_val_predict,KFold
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
         decision_features = self.decision_features
         auto_labels = self.auto_labels
-        cv = KFold(n_splits=5,shuffle=True,random_state=12345)
-        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),
+        if cv is None:
+            cv = KFold(n_splits=5,shuffle=True,random_state=12345)
+        if clf is None:
+            clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),
                                    cv=cv,
                                    tol=1e-5,
                                    max_iter=int(1e4),
                                    scoring='roc_auc',
                                    class_weight='balanced',
                                    n_jobs=n_jobs)
-        clf = Pipeline([('scaler',StandardScaler()),
+            clf = Pipeline([('scaler',StandardScaler()),
                         ('estimator',clf)])
         
         try:
@@ -321,7 +328,7 @@ class Filter_based_and_thresholding:
             auto_labels[idx_] = 0
             #auto_proba[idx_]
         self.auto_labels = auto_labels
-        #self.auto_proba = auto_proba
+        self.auto_proba = auto_proba
         
     def make_manuanl_label(self):
         raw = self.raw

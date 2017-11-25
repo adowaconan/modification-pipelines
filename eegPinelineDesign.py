@@ -21,8 +21,9 @@ import math
 from mne.time_frequency import psd_multitaper
 from sklearn.model_selection import KFold
 from sklearn.metrics import confusion_matrix,accuracy_score,roc_curve,roc_auc_score
-from sklearn.linear_model import LogisticRegressionCV
+from sklearn.linear_model import LogisticRegressionCV,SGDClassifier
 from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 #from obspy.signal.filter import bandpass
 
@@ -90,6 +91,7 @@ def load_data(file_to_read,low_frequency=.1,high_frequency=50,eegReject=80,
     c=200 # low pass cutoff point used before we proceed to the final data
     # read raw data, scale set to 1 after an update of MNE python
     raw = mne.io.read_raw_brainvision(file_to_read,scale=1,preload=True,)
+    raw.set_channel_types({'Aux1':'stim','STI 014':'stim'})
     if 'LOc' in raw.ch_names:# if eye blink channels are in the channel list
         try:
             raw.set_channel_types({'LOc':'eog','ROc':'eog'})
@@ -1455,7 +1457,7 @@ def spindle_validation_with_sleep_stage_after_wavelet_transform(raw,channelList,
     time_find=temp_time_find;mean_peak_power=temp_mean_peak_power;Duration=temp_duration
     return time_find,mean_peak_power,Duration,peak_time,peak_at
 def thresholding_filterbased_spindle_searching(raw,channelList,annotations,moving_window_size=200,lower_threshold=.4,
-                                        syn_channels=3.4,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
+                                        syn_channels=3,l_bound=0.5,h_bound=2,tol=1,higher_threshold=3.5,
                                         front=300,back=100,sleep_stage=True,proba=False,validation_windowsize=3,l_freq=11,h_freq=16):
     
     """One of the core functions
@@ -1618,12 +1620,17 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
     #################### the probabilities of whether segmented data contain spindle signals
     decision_features=None;auto_proba=None;auto_label=None
     if proba:
-        result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})     
+        print('start probability computing')
+        result = pd.DataFrame({'Onset':time_find,'Duration':Duration,'Annotation':['spindle']*len(Duration)})   
+        print('making labels')
         auto_label,_ = discritized_onset_label_auto(raw,result,validation_windowsize)
+        print('segmenting data')
         events = mne.make_fixed_length_events(raw,id=1,start=front,stop=raw.times[-1]-back,duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,preload=True)
+        epochs.resample(100,window='hamming',n_jobs=4)
         data = epochs.get_data()[:,:,:-1]
-        full_prop=[]        
+        full_prop=[]    
+        print('gethering self-defined features')
         for d in data:    
             temp_p=[]
             #fig,ax = plt.subplots(nrows=2,ncols=3,figsize=(8,8))
@@ -1638,12 +1645,17 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
                 
             
             full_prop.append(temp_p)
-        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=l_freq,fmax=h_freq,tmin=0,tmax=3,low_bias=True,)
+        print('computing power spectral density')
+        psds,freq = mne.time_frequency.psd_multitaper(epochs,fmin=l_freq,fmax=h_freq,tmin=0,tmax=3,low_bias=True,n_jobs=4)
         psds = 10* np.log10(psds)
         features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
+        print('standardize')
         decision_features = StandardScaler().fit_transform(features.values,auto_label)
-        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-4,max_iter=int(1e7))
+        #clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-4,max_iter=int(1e7))
+        clf = SGDClassifier(loss='modified_huber',class_weight='balanced',random_state=12345)
+        print('fitting a model')
         clf.fit(decision_features,auto_label)
+        print('output probability of each segmented data')
         auto_proba=clf.predict_proba(decision_features)[:,-1]
             
     return time_find,mean_peak_power,Duration,mph,mpl,auto_proba,auto_label
@@ -2134,10 +2146,12 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
     epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
-    psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,low_bias=True,proj=False,)
+    epochs.resample(64)
+    psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,fmin=11,fmax=16,low_bias=True,proj=False,)
     psds = 10* np.log10(psds)
     data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
-    freqs = freqs.reshape(len(freqs),6,1);psds = psds.reshape(len(psds),6,1)
+    n_ = len(raw.ch_names)
+    freqs = freqs.reshape(len(freqs),n_,1);psds = psds.reshape(len(psds),n_,1)
     data = np.concatenate([data,psds,freqs],axis=2)
     data = data.reshape(len(events),-1)
     gold_standard = read_annotation(raw,annotation_file)
@@ -2177,8 +2191,9 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
         
         print('doing fit prediction')
         fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
-        for train, test in cv.split(data):
-            ratio_threshold = list(Counter(manual_labels[train]).values())[1]/(list(Counter(manual_labels[train]).values())[0]+list(Counter(manual_labels[train]).values())[1])
+        for train, test in cv.split(data,manual_labels):
+            C = np.array(list(dict(Counter(manual_labels[train])).values()))
+            ratio_threshold = C.min() / C.sum()
             print(ratio_threshold)
             exported_pipeline.fit(data[train,:],manual_labels[train])
             fp,tp,_ = metrics.roc_curve(manual_labels[test],exported_pipeline.predict_proba(data[test])[:,1])
@@ -2411,7 +2426,9 @@ def Permutation_test_(data1, data2, n1=100,n2=100):
     
     return p_values,np.mean(p_values),np.std(p_values)
 from sklearn.model_selection import permutation_test_score,StratifiedKFold
+from sklearn import utils
 def Permutation_test(data,n_permutations=100,n_=100):
+    data = np.array(data)
     p_vals = []
     temp_df = {}
     for ii,d in enumerate(data):
@@ -2421,15 +2438,14 @@ def Permutation_test(data,n_permutations=100,n_=100):
         
     vectorized_data = np.concatenate([temp_df[ii] for ii in range(data.shape[0])])
     labels  = np.concatenate([temp_df['label%d'%ii] for ii in range(data.shape[0])])
-    idx = np.arange(vectorized_data.shape[0])
-    for iii in range(100):
-        shuffle(idx)
-    vectorized_data = vectorized_data[idx]
-    labels = labels[idx]
-    for simu in range(n_):
-        cv = StratifiedKFold(n_splits=5,shuffle=True,random_state=12345)
-        clf = LogisticRegressionCV(Cs=np.logspace(-4,4,9),random_state=12345)
+    
+    for iiii in range(100):
+        vectorized_data,labels = utils.shuffle(vectorized_data,labels)
+    
+    for simu in tqdm(range(n_)):
+        cv = StratifiedKFold(n_splits=5,shuffle=True)#,random_state=12345)
+        clf = LogisticRegressionCV(Cs=np.logspace(-3,3,7),cv=3,)#random_state=12345,)
         score,permutation_scores,pval = permutation_test_score(clf,vectorized_data.reshape(-1,1),labels,cv=cv,
-                                                               n_permutations=n_permutations,random_state=12345)
+                                                               n_permutations=n_permutations,)#random_state=12345)
         p_vals.append(pval)
     return score,p_vals,np.mean(p_vals),np.std(p_vals)
