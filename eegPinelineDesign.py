@@ -1627,7 +1627,7 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
         print('segmenting data')
         events = mne.make_fixed_length_events(raw,id=1,start=front,stop=raw.times[-1]-back,duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,preload=True)
-        epochs.resample(100,window='hamming',n_jobs=4)
+        epochs.resample(128,window='hamming')#,n_jobs=4)
         data = epochs.get_data()[:,:,:-1]
         full_prop=[]    
         print('gethering self-defined features')
@@ -1651,8 +1651,8 @@ def thresholding_filterbased_spindle_searching(raw,channelList,annotations,movin
         features = pd.DataFrame(np.concatenate((np.array(full_prop),psds.max(2),freq[np.argmax(psds,2)]),1))
         print('standardize')
         decision_features = StandardScaler().fit_transform(features.values,auto_label)
-        #clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-4,max_iter=int(1e7))
-        clf = SGDClassifier(loss='modified_huber',class_weight='balanced',random_state=12345)
+        clf = LogisticRegressionCV(Cs=np.logspace(-4,6,11),cv=5,tol=1e-3,max_iter=int(1e7))
+        #clf = SGDClassifier(loss='modified_huber',class_weight='balanced',random_state=12345)
         print('fitting a model')
         clf.fit(decision_features,auto_label)
         print('output probability of each segmented data')
@@ -2128,7 +2128,7 @@ def data_gathering_pipeline(temp_dictionary,
 
 from sklearn import metrics
 from collections import Counter
-def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False):
+def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=False,resample=None):
     """
     Wrapper function for machine learning models to fit for individual EEG recording
     
@@ -2146,7 +2146,8 @@ def fit_data(raw,exported_pipeline,annotation_file,cv,front=300,back=100,few=Fal
     stop = raw.times[-1]-back
     events = mne.make_fixed_length_events(raw,1,start=front,stop=stop,duration=3,)
     epochs = mne.Epochs(raw,events,1,tmin=0,tmax=3,proj=False,preload=True)
-    epochs.resample(64)
+    if resample is not None:
+        epochs.resample(resample)
     psds, freqs=mne.time_frequency.psd_multitaper(epochs,tmin=0,tmax=3,fmin=11,fmax=16,low_bias=True,proj=False,)
     psds = 10* np.log10(psds)
     data = epochs.get_data()[:,:,:-1];freqs = freqs[psds.argmax(2)];psds = psds.max(2); 
@@ -2369,7 +2370,7 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
     if cv == None:
         cv = KFold(n_splits=10,random_state=12345,shuffle=True)
     if auc_threshold == 0.5:
-        for train, test in cv.split(manual_labels):
+        for train, test in cv.split(auto_proba,manual_labels,):
             detected,truth,detected_proba = auto_label[train],manual_labels[train],auto_proba[train]
             temp_auc.append(roc_auc_score(truth,detected))
             confM_temp = metrics.confusion_matrix(truth,detected)
@@ -2389,7 +2390,7 @@ def detection_pipeline_crossvalidation(raw,channelList,annotation,windowSize,low
         return temp_auc,fpr,tpr, confM, sensitivity, specificity
     else:
         auc_threshold = list(Counter(auto_label).values())[1]/(list(Counter(auto_label).values())[0]+list(Counter(auto_label).values())[1])
-        for train, test in cv.split(manual_labels):
+        for train, test in cv.split(auto_proba,manual_labels):
             truth,detected_proba = manual_labels[train],auto_proba[train]
             detected = detected_proba > auc_threshold
             temp_auc.append(roc_auc_score(truth,detected_proba))

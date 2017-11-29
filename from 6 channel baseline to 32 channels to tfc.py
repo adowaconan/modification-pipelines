@@ -27,6 +27,7 @@ from Filter_based_and_thresholding import Filter_based_and_thresholding
 from matplotlib import pyplot as plt
 from scipy import stats
 from mne.time_frequency import tfr_multitaper,tfr_morlet
+from mne.decoding import Vectorizer
 
 import pandas as pd
 import re
@@ -72,6 +73,7 @@ exported_pipeline = make_pipeline(
 clf = Pipeline([('scaler',StandardScaler()),
 #                ('feature',SelectKBest(f_classif,k=500)),
                 ('est',exported_pipeline)])
+cv = StratifiedShuffleSplit(n_splits=5,train_size=0.75,test_size=0.25,random_state=12345)
 
 
 f = annotations[37]
@@ -85,32 +87,62 @@ else:
     day = 'day%s' % day
 fif_file = [f for f in fif_data if ('suj%s_'%sub in f.lower()) and (day in f)][0]# the .lower() to make sure the consistence of file name cases
 print(sub,day,f,fif_file) # a checking print 
-model = get_events(fif_file,f,)
-raw = model.raw
-cv = StratifiedShuffleSplit(n_splits=5,train_size=0.75,test_size=0.25,random_state=12345)
-AUC,fpr,tpr,confM,sensitivity,specificity=eegPinelineDesign.fit_data(raw,clf,f,cv,)
-print(AUC,confM,sensitivity,specificity)
+raw = mne.io.read_raw_fif(fif_file,preload=True)
+annotation = pd.read_csv(f)
+picks = mne.pick_types(raw.info,eeg=True,meg=False,eog=False)
+raw.filter(11,16,picks=picks)
+raw_6 = raw.copy()
+raw_32 = raw.copy()
+raw_61 = raw.copy()
+raw_6.pick_channels(['F3','F4','C3','C4','O1','O2'])
+raw_32.pick_channels(raw.ch_names[:32])
+raw_61.pick_channels(raw.ch_names[:61])
+raw_6.info.normalize_proj()
+raw_32.info.normalize_proj()
+raw_61.info.normalize_proj()
 
 del raw
-model = get_events(fif_file,f,channelList=32)
-raw = model.raw
-cv = StratifiedShuffleSplit(n_splits=5,train_size=0.75,test_size=0.25,random_state=12345)
-AUC,fpr,tpr,confM,sensitivity,specificity=eegPinelineDesign.fit_data(raw,clf,f,cv,)
-print(AUC,confM,sensitivity,specificity)
 
+#results_6 = eegPinelineDesign.fit_data(raw_6,clf,f,cv,resample=64)
+#results_32= eegPinelineDesign.fit_data(raw_32,clf,f,cv,resample=64)
+#results_61= eegPinelineDesign.fit_data(raw_61,clf,f,cv,resample=64)
+#print(np.mean(results_6[3],0),np.mean(results_32[3],0),np.mean(results_61[3],0))
 
-epochs = model.epochs
+r6 = eegPinelineDesign.detection_pipeline_crossvalidation(raw_6,raw_6.ch_names,
+                                                        annotation,1000,
+                                                        0.4,3.4,3,
+                                                        11,16,f,cv=cv,
+                                                        auc_threshold='adapt')
+r32 = eegPinelineDesign.detection_pipeline_crossvalidation(raw_32,raw_32.ch_names,
+                                                        annotation,1000,
+                                                        0.4,3.4,16,
+                                                        11,16,f,cv=cv,
+                                                        auc_threshold='adapt')
+r61 = eegPinelineDesign.detection_pipeline_crossvalidation(raw_61,raw_61.ch_names,
+                                                        annotation,1000,
+                                                        0.4,3.4,int(61/2),
+                                                        11,16,f,cv=cv,
+                                                        auc_threshold='adapt')
+print(np.mean(r6[3],0),np.mean(r32[3],0),np.mean(r61[3],0))
+
+front=300;back=100
+stop = raw_6.times[-1]-back
+events = mne.make_fixed_length_events(raw_6,1,start=front,stop=stop,duration=3,)
+epochs = mne.Epochs(raw_6,events,1,tmin=0,tmax=3,proj=False,preload=True)
 epochs.resample(64)
-labels = model.manual_labels
-
+gold_standard = eegPinelineDesign.read_annotation(raw_6,f)
+manual_labels,_ = eegPinelineDesign.discritized_onset_label_manual(raw_6,gold_standard,3)
 freqs = np.arange(11,17,1)
 n_cycles = freqs / 2.
 time_bandwidth = 2.0  # Least possible frequency-smoothing (1 taper)
 power = tfr_multitaper(epochs,freqs,n_cycles=n_cycles,time_bandwidth=time_bandwidth,return_itc=False,average=False,)
-data = power.data
-clf = Pipeline([('scaler',StandardScaler()),
+
+clf = Pipeline([('vectorizer',Vectorizer()),
+                ('scaler',StandardScaler()),
                 ('est',exported_pipeline)])
-data = data.reshape(data.shape[0],-1)
+
+data = power.data
+labels = manual_labels
 fpr,tpr=[],[];AUC=[];confM=[];sensitivity=[];specificity=[]
 for train, test in cv.split(data,labels):
     C = np.array(list(dict(Counter(labels[train])).values()))
@@ -134,6 +166,10 @@ for train, test in cv.split(data,labels):
     print(metrics.classification_report(labels[test],
           clf.predict_proba(data[test])[:,1]>ratio_threshold))
 print(AUC,confM,sensitivity,specificity)
+
+print(np.mean(results_6[3],0),np.mean(results_32[3],0),np.mean(results_61[3],0),np.mean(confM,0))
+#ave = power.data[manual_labels.astype(np.bool)].mean(0).mean(0)
+#plt.imshow(ave,origin='lower',aspect='auto',extent=[0,3000,11,16],interpolation='hamming')
 
 
 

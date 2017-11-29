@@ -115,28 +115,29 @@ class Filter_based_and_thresholding:
         annotation = annotation
         self.annotation = annotation
     
-    def get_epochs(self):
+    def get_epochs(self,resample=None):
         from mne.time_frequency import psd_multitaper
         raw = self.raw
         validation_windowsize = self.validation_windowsize
         front = self.front
         back = self.back
-        l_freq = self.l_freq
-        h_freq = self.h_freq
+#        l_freq = self.l_freq
+#        h_freq = self.h_freq
         events = mne.make_fixed_length_events(raw,id=1,start=front,
                                              stop=raw.times[-1]-back,
                                              duration=validation_windowsize)
         epochs = mne.Epochs(raw,events,event_id=1,tmin=0,tmax=validation_windowsize,
                            preload=True)
-        epochs.resample(64)
-        psds,freq = psd_multitaper(epochs,fmin=l_freq,
-                                        fmax=h_freq,
-                                        tmin=0,tmax=validation_windowsize,
-                                        low_bias=True,)
-        psds = 10 * np.log10(psds)
+        if resample is not None:
+            epochs.resample(resample)
+#        psds,freq = psd_multitaper(epochs,fmin=l_freq,
+#                                        fmax=h_freq,
+#                                        tmin=0,tmax=validation_windowsize,
+#                                        low_bias=True,)
+#        psds = 10 * np.log10(psds)
         self.epochs = epochs
-        self.psds = psds
-        self.freq = freq
+#        self.psds = psds
+#        self.freq = freq
     def find_onset_duration(self,lower_threshold,higher_threshold):
         from scipy.stats import trim_mean,hmean
         self.lower_threshold = lower_threshold
@@ -260,6 +261,7 @@ class Filter_based_and_thresholding:
             self.time_find = temp_time_find
             self.mean_peak_power = temp_mean_peak_power
             self.Duration = temp_duration
+            self.stage_on_off = stage_on_off
             
         except:
             print('stage 2 missing')
